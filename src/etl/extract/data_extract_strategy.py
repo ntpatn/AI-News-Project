@@ -1,0 +1,124 @@
+from abc import ABC, abstractmethod
+import pandas as pd
+from sqlalchemy import create_engine
+import os
+from pathlib import Path
+
+project_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+class BaseLoader(ABC):
+    @abstractmethod
+    def load(self) -> pd.DataFrame:
+        pass
+
+
+class DbLoader(BaseLoader):
+    def __init__(self, conn_str: str, table: str = None, query: str = None):
+        if table is None and query is None:
+            raise ValueError("Either 'table' or 'query' must be provided for DbLoader.")
+        self.conn_str = conn_str
+        self.table = table
+        self.query = query
+        self.engine = None
+        self.conn = None
+
+    def __enter__(self):
+        self.engine = create_engine(self.conn_str)
+        self.conn = self.engine.connect()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.conn is not None:
+            self.conn.close()
+        if self.engine is not None:
+            self.engine.dispose()
+
+    def load(self) -> pd.DataFrame:
+        if self.conn is None:
+            self.engine = create_engine(self.conn_str)
+            with self.engine.connect() as conn:
+                if self.query:
+                    return pd.read_sql(self.query, conn)
+                else:
+                    return pd.read_sql_table(self.table, conn)
+        else:
+            if self.query:
+                return pd.read_sql(self.query, self.conn)
+            else:
+                return pd.read_sql_table(self.table, self.conn)
+
+
+class CsvLoader(BaseLoader):
+    def __init__(self, filepath: str):
+        self.filepath = filepath
+
+    def load(self) -> pd.DataFrame:
+        return pd.read_csv(self.filepath)
+
+
+class SourceBBCLocalLoader(BaseLoader):
+    def __init__(self, filepath: str):
+        if filepath is None:
+            self.filepath = os.path.join(
+                project_path,
+                "data",
+                "source_pariza_sharif_BBC_news_summary",
+                "BBC News Summary",
+            )
+        else:
+            self.filepath = filepath
+
+    def load(self) -> pd.DataFrame:
+        data = []
+        for root, _, files in os.walk(self.filepath):
+            parts = Path(root).parts
+            if len(parts) >= 2 and parts[-2] in {"News Articles", "Summaries"}:
+                article_type = parts[-2]
+                category = parts[-1]
+                for filename in files:
+                    full_path = os.path.join(root, filename)
+                    try:
+                        with open(full_path, "r", encoding="utf-8") as f:
+                            content = f.read()
+                    except Exception as e:
+                        print(f"Warning: Could not read file {full_path}. Error: {e}")
+                        content = ""
+                    data.append(
+                        {
+                            "filename": filename,
+                            "category": category,
+                            "article_or_summary": article_type,
+                            "text_content": content,
+                        }
+                    )
+        df = pd.DataFrame(data)
+        if df.empty:
+            return df
+        df = df.pivot_table(
+            index=["filename", "category"],
+            columns="article_or_summary",
+            values="text_content",
+            aggfunc="first",
+        ).reset_index()
+        df.columns.name = None
+        for col in ["News Articles", "Summaries"]:
+            if col not in df.columns:
+                df[col] = None
+        return df[["filename", "category", "News Articles", "Summaries"]]
+
+
+class DataLoader:
+    @staticmethod
+    def get_loader(cfg: dict) -> BaseLoader:
+        try:
+            if cfg["type"] == "db":
+                return DbLoader(cfg["conn_str"], cfg["table"], cfg.get("query"))
+            elif cfg["type"] == "csv":
+                return CsvLoader(cfg["path"])
+            elif cfg["type"] == "local_bbc":
+                return SourceBBCLocalLoader(cfg["path"])
+            else:
+                raise ValueError(f"Unsupported loader type: {cfg['type']}")
+        except KeyError as e:
+            raise ValueError(f"Configuration is missing required key: {e}")
