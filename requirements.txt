@@ -1,0 +1,40 @@
+# พื้นฐาน
+numpy
+pandas
+scipy
+
+# แสดงผล / EDA
+matplotlib
+seaborn
+notebook
+jupyter
+
+# Machine Learning / NLP
+scikit-learn
+joblib
+xgboost
+lightgbm
+imbalanced-learn
+
+# Feature extraction / Embeddings
+sentence-transformers
+transformers
+torch
+torchvision
+torchaudio
+
+# Text preprocessing
+nltk
+spacy
+regex
+
+# Feature selection
+mlxtend
+
+# Pipeline / Orchestration / MLOps
+mlflow
+apache-airflow
+
+# Utilities
+tqdm
+pyyaml
