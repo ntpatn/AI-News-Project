@@ -1,0 +1,25 @@
+version: "3.8"
+services:
+  projb-trigger:
+    image: python:3.11-slim
+    volumes:
+      - ./trigger.py:/app/trigger.py:ro
+    environment:
+      AIRFLOW_BASE_URL: http://airflow-webserver:8080
+      AIRFLOW_API_USER: ${AIRFLOW_API_USER}
+      AIRFLOW_API_PASSWORD: ${AIRFLOW_API_PASSWORD}
+      DAG_ID: product_etl_currentapi
+    command:
+      - sh
+      - -lc
+      - |
+        pip install --no-cache-dir requests \
+        && python /app/trigger.py
+    networks: [a_net]
+networks:
+  a_net:
+    external: true
+    name: ${AIRFLOW_NETWORK}
+
+
+

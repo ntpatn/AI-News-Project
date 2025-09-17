@@ -1,0 +1,197 @@
+version: "3.8"
+
+x-airflow-common: &airflow-common
+  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.10.3}
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AF_DB_USER}:${AF_DB_PASSWORD}@postgres-airflow/${AF_DB_NAME}
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    PYTHONPATH: /opt/airflow:/opt/airflow/src:/opt/airflow/dags
+    # Airflow tasks ใช้ MLflow + MinIO ได้สะดวก
+    MLFLOW_TRACKING_URI: http://mlflow:${MLFLOW_PORT}
+    MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+    AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+    AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+    - ./src:/opt/airflow/src
+    - ./requirements.txt:/opt/airflow/requirements.txt
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    postgres-airflow:
+      condition: service_healthy
+
+services:
+  # -------- Postgres (สำหรับ Airflow) --------
+  postgres-airflow:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${AF_DB_USER}
+      POSTGRES_PASSWORD: ${AF_DB_PASSWORD}
+      POSTGRES_DB: ${AF_DB_NAME}
+    volumes:
+      - pg_airflow:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AF_DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # -------- Postgres (สำหรับ MLflow) --------
+  postgres-mlflow:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${MLFLOW_DB_USER}
+      POSTGRES_PASSWORD: ${MLFLOW_DB_PASSWORD}
+      POSTGRES_DB: ${MLFLOW_DB_NAME}
+    volumes:
+      - pg_mlflow:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${MLFLOW_DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ----------------- Airflow -----------------
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        if [[ -f "/opt/airflow/requirements.txt" ]]; then
+          pip install --no-cache-dir -r /opt/airflow/requirements.txt || true
+        fi
+        airflow db migrate
+        airflow users create \
+          --username ${_AIRFLOW_WWW_USER_USERNAME:-airflow} \
+          --firstname Admin --lastname User \
+          --role Admin --email admin@example.com \
+          --password ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+        exec /entrypoint airflow version
+    user: "0:0"
+    restart: "no"
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "${AF_WEB_PORT:-8090}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  airflow-triggerer:
+    <<: *airflow-common
+    command: triggerer
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # -------- MinIO (S3 สำหรับ MLflow artifacts) --------
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "${MINIO_API_PORT:-9002}:9000"
+      - "${MINIO_CONSOLE_PORT:-9003}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # เตรียม bucket ครั้งเดียว
+  minio-setup:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD} &&
+      mc mb -p local/${MLFLOW_ARTIFACT_BUCKET} || true &&
+      mc anonymous set private local/${MLFLOW_ARTIFACT_BUCKET} || true &&
+      echo 'MinIO bucket ready'
+      "
+    restart: "no"
+
+  # ----------------- MLflow Server -----------------
+  mlflow:
+    image: python:3.11-slim
+    depends_on:
+      postgres-mlflow:
+        condition: service_healthy
+      minio-setup:
+        condition: service_completed_successfully
+    environment:
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      MLFLOW_PORT: ${MLFLOW_PORT:-5050}
+      BACKEND_STORE_URI: postgresql+psycopg2://${MLFLOW_DB_USER}:${MLFLOW_DB_PASSWORD}@postgres-mlflow/${MLFLOW_DB_NAME}
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      BUCKET: ${MLFLOW_ARTIFACT_BUCKET}
+    command:
+      - sh
+      - -lc
+      - |
+        pip install --no-cache-dir mlflow==3.3.2 psycopg2-binary boto3 && \
+        mlflow server \
+          --backend-store-uri "$${BACKEND_STORE_URI}" \
+          --artifacts-destination "s3://$${BUCKET}" \
+          --host 0.0.0.0 \
+          --port $${MLFLOW_PORT}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:${MLFLOW_PORT:-5050}/api/2.0/mlflow/experiments/list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    ports:
+      - "${MLFLOW_PORT:-5050}:${MLFLOW_PORT:-5050}"
+    restart: unless-stopped
+
+volumes:
+  pg_airflow:
+  pg_mlflow:
+  minio-data:

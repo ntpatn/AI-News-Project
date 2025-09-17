@@ -2,14 +2,14 @@
 # Logs
 logs/
 *.log
-
+# data
+data/
 # OS
 .DS_Store
 Thumbs.db
 
 # Env files
 .env
-.env.*
 
 # Build output
 dist/
