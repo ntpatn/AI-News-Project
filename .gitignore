@@ -30,7 +30,3 @@ coverage/
 # Misc
 *.local
 *.cache
-
-data/**
-!**/*.dvc
-!data/.gitignore

@@ -42,3 +42,5 @@ pyyaml
 requests
 boto3>=1.28
 google-cloud-storage>=2.18
+
+.dvc
