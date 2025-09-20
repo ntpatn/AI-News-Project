@@ -31,5 +31,6 @@ coverage/
 *.local
 *.cache
 
-!*.dvc
-!.gitignore
+data/**
+!**/*.dvc
+!data/.gitignore
