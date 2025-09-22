@@ -1,9 +1,7 @@
-
 # Logs
 logs/
 *.log
-# data
-data/
+
 # OS
 .DS_Store
 Thumbs.db
@@ -13,7 +11,6 @@ Thumbs.db
 
 # Build output
 dist/
-
 out/
 
 # IDEs
@@ -31,7 +28,6 @@ coverage/
 *.local
 *.cache
 
-#dvc
-data/**
-!**/*.dvc
-!data/.gitignore
+# DVC: ignore ข้อมูลจริง แต่ไม่ ignore pointer .dvc
+# data/**
+data/**/*.csv
