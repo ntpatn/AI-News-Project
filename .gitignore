@@ -29,5 +29,7 @@ coverage/
 *.cache
 
 # DVC: ignore ข้อมูลจริง แต่ไม่ ignore pointer .dvc
-# data/**
-data/**/*.csv
+data/**
+
+
+

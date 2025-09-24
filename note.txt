@@ -1,5 +1,0 @@
-dvc remote add -d storage s3://ai-news/dvc-storage
-dvc remote modify storage endpointurl http://localhost:9000
-dvc remote modify storage access_key_id admin
-dvc remote modify storage secret_access_key admin12345
-dvc remote modify storage use_ssl false

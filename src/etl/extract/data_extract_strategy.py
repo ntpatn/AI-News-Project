@@ -7,16 +7,18 @@ from pathlib import Path
 project_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-class BaseLoader(ABC):
+class BaseExtractor(ABC):
     @abstractmethod
     def load(self) -> pd.DataFrame:
         pass
 
 
-class DbLoader(BaseLoader):
+class DbExtractor(BaseExtractor):
     def __init__(self, conn_str: str, table: str = None, query: str = None):
         if table is None and query is None:
-            raise ValueError("Either 'table' or 'query' must be provided for DbLoader.")
+            raise ValueError(
+                "Either 'table' or 'query' must be provided for DbExtractor."
+            )
         self.conn_str = conn_str
         self.table = table
         self.query = query
@@ -49,7 +51,7 @@ class DbLoader(BaseLoader):
                 return pd.read_sql_table(self.table, self.conn)
 
 
-class CsvLoader(BaseLoader):
+class CsvExtractor(BaseExtractor):
     def __init__(self, filepath: str):
         self.filepath = filepath
 
@@ -57,7 +59,7 @@ class CsvLoader(BaseLoader):
         return pd.read_csv(self.filepath)
 
 
-class SourceBBCLocalLoader(BaseLoader):
+class SourceBBCLocalExtractor(BaseExtractor):
     def __init__(self, filepath: str):
         if filepath is None:
             self.filepath = os.path.join(
@@ -108,17 +110,17 @@ class SourceBBCLocalLoader(BaseLoader):
         return df[["filename", "category", "News Articles", "Summaries"]]
 
 
-class DataLoader:
+class DataExtractor:
     @staticmethod
-    def get_loader(cfg: dict) -> BaseLoader:
+    def get_extractor(cfg: dict) -> BaseExtractor:
         try:
             if cfg["type"] == "db":
-                return DbLoader(cfg["conn_str"], cfg["table"], cfg.get("query"))
+                return DbExtractor(cfg["conn_str"], cfg["table"], cfg.get("query"))
             elif cfg["type"] == "csv":
-                return CsvLoader(cfg["path"])
+                return CsvExtractor(cfg["path"])
             elif cfg["type"] == "local_bbc":
-                return SourceBBCLocalLoader(cfg["path"])
+                return SourceBBCLocalExtractor(cfg["path"])
             else:
-                raise ValueError(f"Unsupported loader type: {cfg['type']}")
+                raise ValueError(f"Unsupported Extractor type: {cfg['type']}")
         except KeyError as e:
             raise ValueError(f"Configuration is missing required key: {e}")

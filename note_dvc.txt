@@ -1,0 +1,72 @@
+###########################  Setup
+
+git init
+dvc init
+git add .dvc .gitignore
+git commit -m "init DVC"
+
+
+###########################  Setup Config   ###########################
+
+dvc remote add -d storage s3://mlflow/dvc-storage
+dvc remote modify storage endpointurl http://localhost:9002
+dvc remote modify storage use_ssl false
+dvc remote modify storage access_key_id minio
+dvc remote modify storage secret_access_key minio12345
+#dvc remote modify --local storage access_key_id minio
+#dvc remote modify --local storage secret_access_key minio12345
+
+
+###########################  .gitignore  ###########################
+
+data/**
+!data/**/*.dvc
+!data/.gitignore
+
+
+###########################  Add and Git  ###########################
+
+mkdir dvc_meta -ErrorAction SilentlyContinue
+dvc add --to-remote data\interim\data_news_segmentation\description_not_null\newsseg_desc_not_null_v20250806_002540.csv -o dvc_meta/newsseg_desc_not_null.csv
+dvc import-url --to-remote s3://mlflow/raw/df.parquet dvc_meta/df.parquet 
+
+
+git add dvc_meta/newsseg_desc_not_null.csv.dvc
+git commit -m "track dataset v1"
+dvc push -v
+
+
+###########################  Tag  ###########################
+
+git tag -a data-v1 -m "dataset v1"
+git tag -a data-v2 -m "dataset v2"
+git push --tags
+
+
+###########################  Check  ###########################
+
+Get-ChildItem -Recurse -File .dvc\cache | Measure-Object
+Get-ChildItem -Recurse -File data\*.csv | ForEach-Object
+Get-ChildItem -Recurse -Filter *.dvc     
+
+
+###########################  Remove  ###########################
+
+dvc remove data\*.dvc --outs                                   # คำสั่งนี้จะลบ pointer .dvc
+
+
+###########################  Remove cache  ###########################     
+
+Remove-Item -Recurse -Force .git -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force .dvc -ErrorAction SilentlyContinue
+Get-ChildItem -Recurse -Filter *.dvc | Remove-Item -Force      # ลบไฟล์ pointer .dvc ทั้งหมด
+Remove-Item -Recurse -Force .dvc\cache                         # ลบ local cache ที่ DVC
+
+
+###########################  Healthcheck    ###########################
+
+dvc config --list                                              # เห็น endpointurl=http://localhost:9002 และ core.remote=storage
+dvc remote list                                                # storage s3://mlflow/dvc-storage
+Get-ChildItem -Recurse .dvc\cache | Measure-Object             # Count > 0 = มีของให้ push
+dvc status -c                                                  # ถ้ามี "to push" ให้ dvc push -v
+dvc push -v                                                    # ดูบรรทัดปลายทางเป็น s3://mlflow/dvc-storage/...
