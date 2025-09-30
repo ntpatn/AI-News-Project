@@ -1,19 +1,8 @@
-from abc import ABC, abstractmethod
+from .base_visualization import BaseUniViz
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import List, Union
-
-
-class BaseUniViz(ABC):
-    @staticmethod
-    def set_thai_font():
-        plt.rcParams["font.family"] = "Tahoma"
-        plt.rcParams["axes.unicode_minus"] = False
-
-    @abstractmethod
-    def univiz(self, df: pd.DataFrame, feature: str):
-        pass
 
 
 class HistogramUniViz(BaseUniViz):

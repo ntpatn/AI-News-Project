@@ -1,13 +1,8 @@
-from abc import ABC, abstractmethod
 from typing import List, Union
 from sklearn.preprocessing import LabelEncoder
 import pandas as pd
+from .base_transform import BaseEncoder
 
-
-class BaseEncoder(ABC):
-    @abstractmethod
-    def encode(self, df: pd.DataFrame):
-        pass
 
 
 class LabelColumnsEncoder(BaseEncoder):

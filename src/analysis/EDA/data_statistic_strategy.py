@@ -1,12 +1,6 @@
-from abc import ABC, abstractmethod
+from .base_eda import BaseStatistic
 from typing import List, Union
 import pandas as pd
-
-
-class BaseStatistic(ABC):
-    @abstractmethod
-    def result(self, df: pd.DataFrame):
-        pass
 
 
 class MeanResult(BaseStatistic):

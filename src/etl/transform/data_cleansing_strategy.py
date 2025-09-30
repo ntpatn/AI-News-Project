@@ -1,13 +1,6 @@
-from abc import ABC, abstractmethod
 from typing import List, Union
 import pandas as pd
-
-
-class BaseCleansing(ABC):
-    @abstractmethod
-    def clean(self, df: pd.DataFrame):
-        """Perform data inspection and return a DataFrame with results."""
-        pass
+from .base_transform import BaseCleansing
 
 
 class DropColumnsCleansing(BaseCleansing):

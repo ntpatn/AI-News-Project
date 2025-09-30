@@ -1,21 +1,13 @@
-from abc import ABC, abstractmethod
 import pandas as pd
 from sqlalchemy import create_engine
 import os
 from pathlib import Path
 from io import BytesIO
 from minio import Minio
-
-project_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-class BaseExtractor(ABC):
-    @abstractmethod
-    def extractor(self) -> pd.DataFrame:
-        pass
+from .base_extractor import BaseStructureExtractor
 
 
-class DbExtractor(BaseExtractor):
+class DbExtractor(BaseStructureExtractor):
     def __init__(self, conn_str: str, table: str = None, query: str = None):
         if table is None and query is None:
             raise ValueError(
@@ -53,7 +45,7 @@ class DbExtractor(BaseExtractor):
                 return pd.read_sql_table(self.table, self.conn)
 
 
-class CsvExtractor(BaseExtractor):
+class CsvExtractor(BaseStructureExtractor):
     def __init__(self, filepath: str):
         self.filepath = filepath
 
@@ -61,8 +53,9 @@ class CsvExtractor(BaseExtractor):
         return pd.read_csv(self.filepath)
 
 
-class SourceBBCLocalExtractor(BaseExtractor):
+class SourceBBCLocalExtractor(BaseStructureExtractor):
     def __init__(self, filepath: str):
+        project_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         if filepath is None:
             self.filepath = os.path.join(
                 project_path,
@@ -113,7 +106,7 @@ class SourceBBCLocalExtractor(BaseExtractor):
         return df[["filename", "category", "News Articles", "Summaries"]]
 
 
-class DvcExtractor(BaseExtractor):
+class DvcExtractor(BaseStructureExtractor):
     def __init__(
         self,
         path: str,
@@ -152,7 +145,7 @@ class DvcExtractor(BaseExtractor):
                 raise ValueError(f"Unsupported file extension: {ext}")
 
 
-class MinioExtractor(BaseExtractor):
+class MinioExtractor(BaseStructureExtractor):
     def __init__(
         self,
         endpoint: str,
@@ -177,7 +170,6 @@ class MinioExtractor(BaseExtractor):
         self.encoding = encoding
         self.version_id = version_id
 
-    # ถ้าคุณอยากเก็บเมธอด load() ไว้ใช้ภายในก็ได้
     def extractor(self) -> pd.DataFrame:
         ext = Path(self.object_name).suffix.lower()
         resp = self.client.get_object(
@@ -197,7 +189,6 @@ class MinioExtractor(BaseExtractor):
         elif ext == ".csv":
             return pd.read_csv(BytesIO(data), encoding=self.encoding)
         elif ext == ".json":
-            # ถ้าเป็น JSON Lines ใช้ lines=True ตามไฟล์จริงของคุณ
             return pd.read_json(BytesIO(data))
         else:
             raise ValueError(f"Unsupported file extension for MinIO: {ext}")
@@ -205,7 +196,7 @@ class MinioExtractor(BaseExtractor):
 
 class DataExtractor:
     @staticmethod
-    def get_extractor(cfg: dict) -> BaseExtractor:
+    def get_extractor(cfg: dict) -> BaseStructureExtractor:
         try:
             if cfg["type"] == "db":
                 return DbExtractor(cfg["conn_str"], cfg["table"], cfg.get("query"))

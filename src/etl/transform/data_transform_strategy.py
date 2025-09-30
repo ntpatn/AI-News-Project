@@ -1,12 +1,6 @@
-from abc import ABC, abstractmethod
 from typing import List, Union
 import pandas as pd
-
-
-class BaseTransform(ABC):
-    @abstractmethod
-    def transform(self, df: pd.DataFrame):
-        pass
+from .base_transform import BaseTransform
 
 
 class AstypeTransform(BaseTransform):
@@ -51,7 +45,9 @@ class ReplaceValuesTransform(BaseTransform):
 
     def transform(self, df: pd.DataFrame):
         if self.column is None or self.column not in df.columns:
-            print(f"Column '{self.column}' not found in DataFrame. Skipping replacement.")
+            print(
+                f"Column '{self.column}' not found in DataFrame. Skipping replacement."
+            )
             return df
         if not self.replace_map:
             print(f"No replacement map provided for column '{self.column}'.")

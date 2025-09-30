@@ -1,13 +1,7 @@
-from abc import ABC, abstractmethod
 from typing import List, Union
 import pandas as pd
+from .base_transform import BaseCombining
 
-
-class BaseCombining(ABC):
-    @abstractmethod
-    def combine(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Perform data combining and return a DataFrame with results."""
-        pass
 
 
 class ConcatenateDataFramesCombining(BaseCombining):

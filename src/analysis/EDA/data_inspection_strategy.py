@@ -1,14 +1,6 @@
-from abc import ABC, abstractmethod
 from typing import List, Union
+from .base_eda import BaseInspector
 import pandas as pd
-
-
-class BaseInspector(ABC):
-    @abstractmethod
-    def inspect(self, df: pd.DataFrame):
-        """Perform data inspection and return a DataFrame with results."""
-        pass
-
 
 class ShapeInspection(BaseInspector):
     def inspect(self, df: pd.DataFrame):
