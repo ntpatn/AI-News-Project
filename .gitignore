@@ -8,6 +8,7 @@ Thumbs.db
 
 # Env files
 .env
+.venv/
 
 # Build output
 dist/
@@ -30,6 +31,8 @@ coverage/
 
 # DVC: ignore ข้อมูลจริง แต่ไม่ ignore pointer .dvc
 data/**
+
+*.pyc
 
 
 

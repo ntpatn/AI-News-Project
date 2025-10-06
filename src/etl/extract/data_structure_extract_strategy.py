@@ -189,9 +189,30 @@ class MinioExtractor(BaseStructureExtractor):
         elif ext == ".csv":
             return pd.read_csv(BytesIO(data), encoding=self.encoding)
         elif ext == ".json":
-            return pd.read_json(BytesIO(data))
+            return pd.json_normalize(BytesIO(data))
         else:
             raise ValueError(f"Unsupported file extension for MinIO: {ext}")
+
+
+class GetApiJsonUrlExtractor(BaseStructureExtractor):
+    def __init__(self, url: str, params: dict = None):
+        self.url = url
+        self.params = params
+
+    def extractor(self) -> pd.DataFrame:
+        try:
+            import requests
+
+            response = requests.get(self.url, self.params)
+            if (response.status_code == 200) and (
+                "application/json" in response.headers.get("Content-Type", "")
+            ):
+                data = response.json()
+                return data
+            else:
+                raise ValueError(f"Failed to fetch data from URL: {self.url}")
+        except Exception:
+            raise ValueError(f"Failed to fetch data from URL: {self.url}")
 
 
 class DataExtractor:
@@ -202,19 +223,21 @@ class DataExtractor:
                 return DbExtractor(cfg["conn_str"], cfg["table"], cfg.get("query"))
             elif cfg["type"] == "csv":
                 return CsvExtractor(cfg["path"])
+            elif cfg["type"] == "api_url":
+                return GetApiJsonUrlExtractor(cfg["path"], cfg.get("params"))
             elif cfg["type"] == "local_bbc":
                 return SourceBBCLocalExtractor(cfg["path"])
             elif cfg["type"] == "dvc":
                 return DvcExtractor(
                     cfg["path"], cfg["repo"], cfg["remote"], cfg["encoding"], cfg["rev"]
                 )
-            elif cfg["type"].lower() == "minio":  # รองรับ minIO/Minio/minio
+            elif cfg["type"].lower() == "minio":
                 return MinioExtractor(
                     endpoint=cfg["endpoint"],
                     access_key=cfg["access_key"],
                     secret_key=cfg["secret_key"],
                     bucket=cfg["bucket"],
-                    object_name=cfg["object"],  # << คีย์นี้ต้องมีใน cfg
+                    object_name=cfg["object"],
                     secure=cfg.get("secure", False),
                     encoding=cfg.get("encoding", "utf-8"),
                     version_id=cfg.get("version_id"),

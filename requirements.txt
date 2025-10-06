@@ -33,6 +33,7 @@ mlxtend
 
 # Pipeline / Orchestration / MLOps
 mlflow
+minio
 apache-airflow
 
 # Utilities

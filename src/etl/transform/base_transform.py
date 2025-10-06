@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Any
 import pandas as pd
 
 
@@ -23,4 +24,16 @@ class BaseEncoder(ABC):
 class BaseTransform(ABC):
     @abstractmethod
     def transform(self, df: pd.DataFrame):
+        pass
+
+
+class BaseFormatting(ABC):
+    @abstractmethod
+    def formatting(self, obj: Any):
+        pass
+
+
+class BaseMeta(ABC):
+    @abstractmethod
+    def meta(self, obj: Any):
         pass

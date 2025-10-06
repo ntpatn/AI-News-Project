@@ -1,0 +1,7 @@
+mlflow<3
+minio
+boto3
+pandas
+numpy
+pyyaml
+requests

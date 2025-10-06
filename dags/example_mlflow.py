@@ -2,7 +2,7 @@ from datetime import datetime
 from airflow.models.dag import DAG
 from airflow.operators.python import PythonOperator
 import os
-import random 
+import random
 import mlflow
 
 
@@ -20,7 +20,7 @@ with DAG(
     start_date=datetime(2024, 1, 1),
     schedule_interval=None,
     catchup=False,
-    tags=["mlflow"],
+    tags=["mlflow_test"],
 ):
     PythonOperator(
         task_id="log_metric",
