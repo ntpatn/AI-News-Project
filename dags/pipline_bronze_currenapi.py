@@ -94,9 +94,11 @@ with DAG(
     schedule_interval="0 6 * * *",
     start_date=datetime(2025, 10, 6),
     catchup=False,
-    tags=["bronze", "currenapi222"],
+    tags=["bronze", "currenapi"],
 ) as dag:
-    with TaskGroup("TEST", tooltip="Extract, Transform and Load") as etl_group:
+    with TaskGroup(
+        "pipline_bronze_currenapi", tooltip="Extract, Transform and Load"
+    ) as etl_group:
         data_extract = extract_get_currentsapi_bronze_pipeline()
         data_transform = transform_get_currentsapi_bronze_pipeline(data_extract)
         data_load = load_get_currentsapi_bronze_pipeline(data_transform)

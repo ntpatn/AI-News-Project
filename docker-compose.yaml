@@ -27,13 +27,14 @@ x-airflow-common: &airflow-common
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
     - ${AIRFLOW_PROJ_DIR:-.}/src:/opt/airflow/src
     - ${AIRFLOW_PROJ_DIR:-.}/requirements.txt:/opt/airflow/requirements.txt
-  user: "${AIRFLOW_UID:-50000}:0"
+  # ลบบรรทัดนี้ออก หรือเปลี่ยนเป็น root
+  # user: "${AIRFLOW_UID:-50000}:0"
+  user: "0:0" # รันเป็น root
   depends_on: &airflow-common-depends-on
     postgres-airflow:
       condition: service_healthy
 
 services:
-  # -------- Postgres (สำหรับ Airflow) --------
   postgres-airflow:
     image: postgres:15
     environment:
@@ -49,7 +50,6 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # -------- Postgres (สำหรับ MLflow) --------
   postgres-mlflow:
     image: postgres:15
     environment:
@@ -64,19 +64,6 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
-
-  # ----------------- Airflow -----------------
-  # Fix permissions ก่อนทุกอย่าง
-  airflow-fix-permissions:
-    <<: *airflow-common
-    command: >
-      bash -c "
-      mkdir -p /opt/airflow/logs /opt/airflow/dags /opt/airflow/plugins &&
-      chmod -R 777 /opt/airflow/logs &&
-      echo 'Permissions fixed successfully'
-      "
-    user: "0:0"
-    restart: "no"
 
   airflow-init:
     <<: *airflow-common
@@ -101,12 +88,7 @@ services:
       _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
       _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
       _PIP_ADDITIONAL_REQUIREMENTS: ""
-    user: "0:0"
     restart: "no"
-    depends_on:
-      <<: *airflow-common-depends-on
-      airflow-fix-permissions:
-        condition: service_completed_successfully
 
   airflow-webserver:
     <<: *airflow-common
@@ -159,7 +141,6 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
-  # -------- MinIO (S3 สำหรับ MLflow artifacts) --------
   minio:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
@@ -178,7 +159,6 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # เตรียม bucket ครั้งเดียว
   minio-setup:
     image: minio/mc:latest
     depends_on:
@@ -193,7 +173,6 @@ services:
       "
     restart: "no"
 
-  # ----------------- MLflow Server -----------------
   mlflow:
     image: python:3.11-slim
     depends_on:
