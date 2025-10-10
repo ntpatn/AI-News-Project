@@ -6,7 +6,9 @@ from airflow.exceptions import AirflowException
 import pandas as pd
 import os
 
-currentapi_api_key = os.environ.get("CURRENTS_API_KEY")
+currentsapi_api_key = os.environ.get("CURRENTS_API_KEY")
+if not currentsapi_api_key:
+    raise AirflowException("CURRENTS_API_KEY environment variable is not set.")
 
 
 @task()
@@ -17,12 +19,12 @@ def extract_get_currentsapi_bronze_pipeline():
         config = {
             "type": "api_url",
             "path": "https://api.currentsapi.services/v1/latest-news",
-            "params": {"language": "en", "apiKey": currentapi_api_key},
+            "params": {"language": "en", "apiKey": currentsapi_api_key},
         }
         data = DataExtractor.get_extractor(config).extractor()
         return data
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Failed to extract data from CurrentsAPI: {e}")
         raise AirflowException(
             "Force extract_get_currentsapi_bronze_pipeline task to fail"
         )
@@ -51,10 +53,10 @@ def transform_get_currentsapi_bronze_pipeline(data):
             ),
             "usercreate": "system",
             "updatedate": pd.NaT,
-            "userupdate": "system",
+            "userupdate": pd.NaT,
             "activedata": True,
             "batch_id": ctx["run_id"],
-            "source": "currentsapi",
+            "source_system": "currentsapi",
             "layer": "bronze",
         }
         meta_appender = MetadataAppender(metadata)
@@ -64,7 +66,7 @@ def transform_get_currentsapi_bronze_pipeline(data):
         ).formatting(df)
         return csv
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Failed to transform CurrentsAPI data: {e}")
         raise AirflowException(
             "Force transform_get_currentsapi_bronze_pipeline task to fail"
         )
@@ -73,31 +75,32 @@ def transform_get_currentsapi_bronze_pipeline(data):
 @task()
 def load_get_currentsapi_bronze_pipeline(data):
     try:
-        from src.etl.load.data_structure_loader_strategy import PostgresCsvCopyLoader
+        from src.etl.load.data_structure_loader_strategy import PostgresUpsertLoader
 
-        loader = PostgresCsvCopyLoader(
-            "postgres_localhost_5433",
-            "bronze",
-            "source_news_articles_currentsapi",
+        loader = PostgresUpsertLoader(
+            dsn="postgres_localhost_5433",
+            schema="bronze",
+            table="source_news_articles_currentsapi",
+            conflict_columns=["id", "url"],
         )
-        loader.create(data)
+        loader.loader(data)
         print("Data inserted successfully.")
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Failed to load CurrentsAPI data to database: {e}")
         raise AirflowException(
             "Force load_get_currentsapi_bronze_pipeline task to fail"
         )
 
 
 with DAG(
-    dag_id="pipline_bronze_currenapi",
+    dag_id="pipeline_bronze_currentsapi",
     schedule_interval="0 6 * * *",
     start_date=datetime(2025, 10, 6),
     catchup=False,
-    tags=["bronze", "currenapi"],
+    tags=["bronze", "currentsapi"],
 ) as dag:
     with TaskGroup(
-        "pipline_bronze_currenapi", tooltip="Extract, Transform and Load"
+        "pipeline_bronze_currentsapi", tooltip="Extract, Transform and Load"
     ) as etl_group:
         data_extract = extract_get_currentsapi_bronze_pipeline()
         data_transform = transform_get_currentsapi_bronze_pipeline(data_extract)
