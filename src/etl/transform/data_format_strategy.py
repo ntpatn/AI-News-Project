@@ -2,7 +2,6 @@ from typing import Any, List, Union
 import pandas as pd
 from src.etl.transform.base_transform import BaseFormatting
 from typing import Optional
-from pathlib import Path
 
 
 class FromJsonToDataFrameFormatter(BaseFormatting):

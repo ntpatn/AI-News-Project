@@ -62,7 +62,7 @@ def transform_get_mediastack_bronze_pipeline(data):
         meta_appender = MetadataAppender(metadata)
         df = meta_appender.meta(df)
         csv = DataFormatter(
-            FromDataFrameToCsvFormatter(index=False, encoding="utf-8-sig", sep=",")
+            FromDataFrameToCsvFormatter(index=False, encoding="utf-8-sig", sep=";")
         ).formatting(df)
         return csv
     except Exception as e:
@@ -82,6 +82,7 @@ def load_get_mediastack_bronze_pipeline(data):
             schema="bronze",
             table="source_news_articles_mediastack",
             conflict_columns=["url"],
+            delimiter=";",
         )
         loader.loader(data)
         print("Data inserted successfully.")
