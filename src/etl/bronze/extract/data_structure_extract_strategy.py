@@ -8,12 +8,15 @@ from .base_extractor import BaseStructureExtractor
 
 
 class DbExtractor(BaseStructureExtractor):
-    def __init__(self, conn_str: str, table: str = None, query: str = None):
+    def __init__(
+        self, conn_str: str, schema: str, table: str = None, query: str = None
+    ):
         if table is None and query is None:
             raise ValueError(
                 "Either 'table' or 'query' must be provided for DbExtractor."
             )
         self.conn_str = conn_str
+        self.schema = schema
         self.table = table
         self.query = query
         self.engine = None
@@ -37,12 +40,12 @@ class DbExtractor(BaseStructureExtractor):
                 if self.query:
                     return pd.read_sql(self.query, conn)
                 else:
-                    return pd.read_sql_table(self.table, conn)
+                    return pd.read_sql_table(self.table, conn, schema=self.schema)
         else:
             if self.query:
                 return pd.read_sql(self.query, self.conn)
             else:
-                return pd.read_sql_table(self.table, self.conn)
+                return pd.read_sql_table(self.table, self.conn, schema=self.schema)
 
 
 class CsvExtractor(BaseStructureExtractor):
@@ -220,7 +223,9 @@ class DataExtractor:
     def get_extractor(cfg: dict) -> BaseStructureExtractor:
         try:
             if cfg["type"] == "db":
-                return DbExtractor(cfg["conn_str"], cfg["table"], cfg.get("query"))
+                return DbExtractor(
+                    cfg["conn_str"], cfg["schema"], cfg["table"], cfg.get("query")
+                )
             elif cfg["type"] == "csv":
                 return CsvExtractor(cfg["path"])
             elif cfg["type"] == "api_url":

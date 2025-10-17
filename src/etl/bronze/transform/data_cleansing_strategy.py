@@ -160,17 +160,3 @@ class DataCleansing:
             df = strategy.clean(df)
             print("-" * 40)
         return df
-
-
-if __name__ == "__main__":
-    # Example usage
-    data = {"A": [1, None, 3, None], "B": [4, 5, None, 7]}
-    df = pd.DataFrame(data)
-    strategies = [
-        DropNaCleansing(),
-        DropNaCleansing("B"),
-        DropNaCleansing(["A", "B"]),
-    ]
-    cleansing = DataCleansing(strategies)
-    df_cleaned = cleansing.clean(df)
-    print(df_cleaned)

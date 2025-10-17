@@ -3,8 +3,10 @@ from airflow.models.dag import DAG
 from airflow.utils.task_group import TaskGroup
 from datetime import datetime
 import os
-from airflow.exceptions import AirflowException
+from airflow.exceptions import AirflowException, AirflowSkipException
 
+LANGUAGE = "en"
+COUNTRY = "us"
 CATEGORIES = [
     "business",
     "entertainment",
@@ -22,51 +24,54 @@ if not api_key:
 @task()
 def extract_get_newsapi_bronze_pipeline(category: str):
     try:
-        from src.etl.extract.data_structure_extract_strategy import DataExtractor
+        print(f"[extract] category={category}")
+        from src.etl.bronze.extract.data_structure_extract_strategy import DataExtractor
 
-        # ดึง key ใน runtime เพื่อไม่ให้ DAG พังตอน parse
         config = {
             "type": "api_url",
             "path": "https://newsapi.org/v2/top-headlines",
             "params": {
-                "country": "us",
+                "country": COUNTRY,
                 "pageSize": 1,
                 "apiKey": api_key,
                 "category": category,
+                "language": LANGUAGE,
             },
         }
         data = DataExtractor.get_extractor(config).extractor()
         for item in data.get("articles", []):
             item["category"] = category
-        return data
+        return {"category": category, "data": data}
     except Exception as e:
         print(f"Failed to extract data from NEWSAPI: {e}")
         raise AirflowException("Force extract_get_newsapi_bronze_pipeline task to fail")
 
 
 @task()
-def transform_get_newsapi_bronze_pipeline(data):
+def transform_get_newsapi_bronze_pipeline(batch: dict):
     try:
-        from src.etl.transform.data_format_strategy import (
+        from src.etl.bronze.transform.data_format_strategy import (
             FromJsonToDataFrameFormatter,
             FromDataFrameToCsvFormatter,
             DataFormatter,
         )
-        from src.etl.transform.data_metadata_strategy import MetadataAppender
+        from src.etl.bronze.transform.data_metadata_strategy import MetadataAppender
         from airflow.operators.python import get_current_context
-        from src.etl.transform.data_transform_strategy import RenameColumnsTransform
+        from src.etl.bronze.transform.data_transform_strategy import (
+            RenameColumnsTransform,
+        )
         import pandas as pd
-        from datetime import timezone
 
+        category = batch["category"]
+        print(f"[transform] category={category}")
+        data = batch["data"]
         ctx = get_current_context()
         df = DataFormatter(
             FromJsonToDataFrameFormatter(array_keys=["articles"])
         ).formatting(data)
         print(df.columns)
         metadata = {
-            "createdate": pd.Timestamp.now(tz=timezone.utc).strftime(
-                "%Y-%m-%dT%H:%M:%S"
-            ),
+            "createdate": pd.Timestamp.now(tz="UTC").to_pydatetime(),
             "usercreate": "system",
             "updatedate": pd.NaT,
             "userupdate": pd.NaT,
@@ -74,6 +79,8 @@ def transform_get_newsapi_bronze_pipeline(data):
             "batch_id": ctx["run_id"],
             "source_system": "newsapi",
             "layer": "bronze",
+            "country": COUNTRY,
+            "language": LANGUAGE,
         }
         df = MetadataAppender(metadata).meta(df)
         print(df.columns)
@@ -89,7 +96,7 @@ def transform_get_newsapi_bronze_pipeline(data):
         csv = DataFormatter(
             FromDataFrameToCsvFormatter(index=False, encoding="utf-8-sig", sep=";")
         ).formatting(df)
-        return csv
+        return {"category": category, "csv": csv}
     except Exception as e:
         print(f"Failed to transform NEWSAPI data: {e}")
         raise AirflowException(
@@ -98,9 +105,28 @@ def transform_get_newsapi_bronze_pipeline(data):
 
 
 @task()
-def load_get_newsapi_bronze_pipeline(csv_text: str):
+def load_get_newsapi_bronze_pipeline(batch: dict):
     try:
-        from src.etl.load.data_structure_loader_strategy import PostgresUpsertLoader
+        from src.etl.bronze.load.data_structure_loader_strategy import (
+            PostgresUpsertLoader,
+        )
+        import io
+        import csv
+
+        category = batch["category"]
+        csv_text = batch["csv"]
+        print(f"[load] category={category}")
+
+        if not csv_text or not csv_text.strip():
+            raise AirflowSkipException("No CSV content. Skip loading.")
+
+        # 2) เช็ก header ให้มีคอลัมน์ที่ต้องใช้ (เช่น url) → ถ้าไม่มีให้ข้าม
+        reader = csv.reader(io.StringIO(csv_text), delimiter=";")
+        header = next(reader, None) or []
+        if "url" not in header:
+            raise AirflowSkipException(
+                "CSV missing required column 'url'. Skip loading."
+            )
 
         loader = PostgresUpsertLoader(
             dsn="postgres_localhost_5433",
@@ -111,6 +137,12 @@ def load_get_newsapi_bronze_pipeline(csv_text: str):
         )
         loader.loader(csv_text)
         print("Data inserted successfully.")
+    except ValueError as e:
+        if "Conflict columns missing" in str(e):
+            raise AirflowSkipException(str(e))
+        raise
+    except AirflowSkipException:
+        raise
     except Exception as e:
         print(f"Failed to load NEWSAPI data to database: {e}")
         raise AirflowException("Force load_get_newsapi_bronze_pipeline task to fail")
@@ -127,8 +159,8 @@ with DAG(
         "pipeline_bronze_newsapi", tooltip="Extract, Transform and Load"
     ) as etl_group:
         extracted = extract_get_newsapi_bronze_pipeline.expand(category=CATEGORIES)
-        transformed = transform_get_newsapi_bronze_pipeline.expand(data=extracted)
-        loaded = load_get_newsapi_bronze_pipeline.expand(csv_text=transformed)
+        transformed = transform_get_newsapi_bronze_pipeline.expand(batch=extracted)
+        loaded = load_get_newsapi_bronze_pipeline.expand(batch=transformed)
 
         extracted >> transformed >> loaded
 

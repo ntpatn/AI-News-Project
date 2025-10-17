@@ -47,3 +47,5 @@ google-cloud-storage>=2.18
 #dvc
 pyarrow 
 s3fs
+
+tldextract==5.1.2

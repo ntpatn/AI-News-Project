@@ -5,7 +5,7 @@ import logging
 from psycopg2 import errors, sql
 from uuid import uuid4
 from time import time
-from typing import Iterator, List
+from typing import Iterator
 
 logger = logging.getLogger(__name__)
 
@@ -396,8 +396,8 @@ class PostgresUpsertLoader:
             logger.error(f"NOT NULL violation: {e.diag.column_name}")
             raise RuntimeError(f"NOT NULL constraint: {e.diag.column_name}") from e
         except errors.UniqueViolation as e:
-            logger.error(f"Unique constraint violation")
+            logger.error(f"Unique constraint violation : {e}")
             raise RuntimeError("Unique constraint violated") from e
         except Exception as e:
-            logger.exception("Load failed")
+            logger.exception(f"Load failed : {e}")
             raise

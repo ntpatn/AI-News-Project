@@ -1,7 +1,7 @@
 from airflow.decorators import task
 from airflow.models.dag import DAG
 from airflow.utils.task_group import TaskGroup
-from datetime import datetime, timezone
+from datetime import datetime
 from airflow.exceptions import AirflowException
 import pandas as pd
 import os
@@ -14,7 +14,7 @@ if not mediastack_api_key:
 @task()
 def extract_get_mediastack_bronze_pipeline():
     try:
-        from src.etl.extract.data_structure_extract_strategy import DataExtractor
+        from src.etl.bronze.extract.data_structure_extract_strategy import DataExtractor
 
         config = {
             "type": "api_url",
@@ -33,12 +33,12 @@ def extract_get_mediastack_bronze_pipeline():
 @task()
 def transform_get_mediastack_bronze_pipeline(data):
     try:
-        from src.etl.transform.data_format_strategy import (
+        from src.etl.bronze.transform.data_format_strategy import (
             FromJsonToDataFrameFormatter,
             FromDataFrameToCsvFormatter,
             DataFormatter,
         )
-        from src.etl.transform.data_metadata_strategy import MetadataAppender
+        from src.etl.bronze.transform.data_metadata_strategy import MetadataAppender
         from airflow.operators.python import get_current_context
 
         ctx = get_current_context()
@@ -48,9 +48,7 @@ def transform_get_mediastack_bronze_pipeline(data):
         ).formatting(data)
         # df = df.explode("category", ignore_index=True)
         metadata = {
-            "createdate": pd.Timestamp.now(tz=timezone.utc).strftime(
-                "%Y-%m-%dT%H:%M:%S"
-            ),
+            "createdate": pd.Timestamp.now(tz="UTC").to_pydatetime(),
             "usercreate": "system",
             "updatedate": pd.NaT,
             "userupdate": pd.NaT,
@@ -75,7 +73,9 @@ def transform_get_mediastack_bronze_pipeline(data):
 @task()
 def load_get_mediastack_bronze_pipeline(data):
     try:
-        from src.etl.load.data_structure_loader_strategy import PostgresUpsertLoader
+        from src.etl.bronze.load.data_structure_loader_strategy import (
+            PostgresUpsertLoader,
+        )
 
         loader = PostgresUpsertLoader(
             dsn="postgres_localhost_5433",
