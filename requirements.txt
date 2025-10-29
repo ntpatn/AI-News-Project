@@ -49,3 +49,4 @@ pyarrow
 s3fs
 
 tldextract==5.1.2
+mmh3

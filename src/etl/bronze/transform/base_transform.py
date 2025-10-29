@@ -37,3 +37,9 @@ class BaseMeta(ABC):
     @abstractmethod
     def meta(self, obj: Any):
         pass
+
+
+class BaseSilverCleaning(ABC):
+    @abstractmethod
+    def silverCleaning(self, df: pd.DataFrame):
+        pass

@@ -6,8 +6,9 @@ from airflow.exceptions import AirflowException
 import pandas as pd
 import os
 
+Connection_String = os.environ.get("Connection_String")
 mediastack_api_key = os.environ.get("MEDIASTACK_API_KEY")
-if not mediastack_api_key:
+if not mediastack_api_key and Connection_String == "":
     raise AirflowException("MEDIASTACK_API_KEY environment variable is not set.")
 
 
@@ -46,7 +47,6 @@ def transform_get_mediastack_bronze_pipeline(data):
         df = DataFormatter(
             FromJsonToDataFrameFormatter(array_keys=["data"])
         ).formatting(data)
-        # df = df.explode("category", ignore_index=True)
         metadata = {
             "createdate": pd.Timestamp.now(tz="UTC").to_pydatetime(),
             "usercreate": "system",
@@ -67,6 +67,35 @@ def transform_get_mediastack_bronze_pipeline(data):
         print(f"Failed to transform MediaStack data: {e}")
         raise AirflowException(
             "Force transform_get_mediastack_bronze_pipeline task to fail"
+        )
+
+
+@task()
+def transform_add_sf_running_mediastack_bronze_pipeline(data):
+    try:
+        from src.etl.bronze.transform.data_format_strategy import (
+            FromDataFrameToCsvFormatter,
+            DataFormatter,
+        )
+        from src.function.index.sf_generator import SnowflakeGenerator
+        from airflow.hooks.base import BaseHook
+        from src.etl.bronze.load.utils.csv_buffer import prepare_csv_buffer
+
+        conn = BaseHook.get_connection("postgres_localhost_5433")
+        dsn = f"dbname={conn.schema} user={conn.login} password={conn.password} host={conn.host} port={conn.port}"
+        sf = SnowflakeGenerator(dsn=dsn, source_name="bronze.mediastack", version_no=1)
+        csv_buffer, _ = prepare_csv_buffer(data)
+        df = pd.read_csv(csv_buffer, sep=";", encoding="utf-8-sig")
+
+        df["sf_id"] = sf.bulk_generate_fast(len(df))
+        csv = DataFormatter(
+            FromDataFrameToCsvFormatter(index=False, encoding="utf-8-sig", sep=";")
+        ).formatting(df)
+        return csv
+    except Exception as e:
+        print(f"Failed to transform add id_sf in MediaStack data: {e}")
+        raise AirflowException(
+            "Force transform_add_sf_running_mediastack_bronze_pipeline task to fail"
         )
 
 
@@ -103,8 +132,11 @@ with DAG(
     ) as etl_group:
         data_extract = extract_get_mediastack_bronze_pipeline()
         data_transform = transform_get_mediastack_bronze_pipeline(data_extract)
-        data_load = load_get_mediastack_bronze_pipeline(data_transform)
+        data_add_sf = transform_add_sf_running_mediastack_bronze_pipeline(
+            data_transform
+        )
+        data_load = load_get_mediastack_bronze_pipeline(data_add_sf)
 
-        data_extract >> data_transform >> data_load
+        data_extract >> data_transform >> data_add_sf >> data_load
 
     etl_group

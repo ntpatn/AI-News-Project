@@ -4,6 +4,7 @@ from airflow.utils.task_group import TaskGroup
 from datetime import datetime
 import os
 from airflow.exceptions import AirflowException, AirflowSkipException
+import pandas as pd
 
 LANGUAGE = "en"
 COUNTRY = "us"
@@ -60,7 +61,6 @@ def transform_get_newsapi_bronze_pipeline(batch: dict):
         from src.etl.bronze.transform.data_transform_strategy import (
             RenameColumnsTransform,
         )
-        import pandas as pd
 
         category = batch["category"]
         print(f"[transform] category={category}")
@@ -101,6 +101,37 @@ def transform_get_newsapi_bronze_pipeline(batch: dict):
         print(f"Failed to transform NEWSAPI data: {e}")
         raise AirflowException(
             "Force transform_get_newsapi_bronze_pipeline task to fail"
+        )
+
+
+@task()
+def transform_add_sf_running_newsapi_bronze_pipeline(batch: dict):
+    try:
+        from src.etl.bronze.transform.data_format_strategy import (
+            FromDataFrameToCsvFormatter,
+            DataFormatter,
+        )
+        from src.function.index.sf_generator import SnowflakeGenerator
+        from airflow.hooks.base import BaseHook
+        from src.etl.bronze.load.utils.csv_buffer import prepare_csv_buffer
+
+        category = batch["category"]
+        print(f"[transform] category={category}")
+        data = batch["csv"]
+        conn = BaseHook.get_connection("postgres_localhost_5433")
+        dsn = f"dbname={conn.schema} user={conn.login} password={conn.password} host={conn.host} port={conn.port}"
+        sf = SnowflakeGenerator(dsn=dsn, source_name="bronze.newsapi", version_no=1)
+        csv_buffer, _ = prepare_csv_buffer(data)
+        df = pd.read_csv(csv_buffer, sep=";", encoding="utf-8-sig")
+        df["sf_id"] = sf.bulk_generate_fast(len(df))
+        csv = DataFormatter(
+            FromDataFrameToCsvFormatter(index=False, encoding="utf-8-sig", sep=";")
+        ).formatting(df)
+        return {"category": category, "csv": csv}
+    except Exception as e:
+        print(f"Failed to transform add id_sf in newsapi data: {e}")
+        raise AirflowException(
+            "Force transform_add_sf_running_newsapi_bronze_pipeline task to fail"
         )
 
 
@@ -160,8 +191,11 @@ with DAG(
     ) as etl_group:
         extracted = extract_get_newsapi_bronze_pipeline.expand(category=CATEGORIES)
         transformed = transform_get_newsapi_bronze_pipeline.expand(batch=extracted)
-        loaded = load_get_newsapi_bronze_pipeline.expand(batch=transformed)
+        running = transform_add_sf_running_newsapi_bronze_pipeline.expand(
+            batch=transformed
+        )
+        loaded = load_get_newsapi_bronze_pipeline.expand(batch=running)
 
-        extracted >> transformed >> loaded
+        extracted >> transformed >> running >> loaded
 
     etl_group

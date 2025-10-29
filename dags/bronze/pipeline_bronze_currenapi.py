@@ -73,6 +73,34 @@ def transform_get_currentsapi_bronze_pipeline(data):
 
 
 @task()
+def transform_add_sf_running_currentsapi_bronze_pipeline(data):
+    try:
+        from src.etl.bronze.transform.data_format_strategy import (
+            FromDataFrameToCsvFormatter,
+            DataFormatter,
+        )
+        from src.function.index.sf_generator import SnowflakeGenerator
+        from airflow.hooks.base import BaseHook
+        from src.etl.bronze.load.utils.csv_buffer import prepare_csv_buffer
+
+        conn = BaseHook.get_connection("postgres_localhost_5433")
+        dsn = f"dbname={conn.schema} user={conn.login} password={conn.password} host={conn.host} port={conn.port}"
+        sf = SnowflakeGenerator(dsn=dsn, source_name="bronze.currentsapi", version_no=1)
+        csv_buffer, _ = prepare_csv_buffer(data)
+        df = pd.read_csv(csv_buffer, sep=";", encoding="utf-8-sig")
+        df["sf_id"] = sf.bulk_generate_fast(len(df))
+        csv = DataFormatter(
+            FromDataFrameToCsvFormatter(index=False, encoding="utf-8-sig", sep=";")
+        ).formatting(df)
+        return csv
+    except Exception as e:
+        print(f"Failed to transform add id_sf in currentsapi data: {e}")
+        raise AirflowException(
+            "Force transform_add_sf_running_currentsapi_bronze_pipeline task to fail"
+        )
+
+
+@task()
 def load_get_currentsapi_bronze_pipeline(data):
     try:
         from src.etl.bronze.load.data_structure_loader_strategy import (
@@ -107,8 +135,11 @@ with DAG(
     ) as etl_group:
         data_extract = extract_get_currentsapi_bronze_pipeline()
         data_transform = transform_get_currentsapi_bronze_pipeline(data_extract)
-        data_load = load_get_currentsapi_bronze_pipeline(data_transform)
+        data_add_sf = transform_add_sf_running_currentsapi_bronze_pipeline(
+            data_transform
+        )
+        data_load = load_get_currentsapi_bronze_pipeline(data_add_sf)
 
-        data_extract >> data_transform >> data_load
+        data_extract >> data_transform >> data_add_sf >> data_load
 
     etl_group
