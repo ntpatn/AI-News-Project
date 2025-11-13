@@ -1,11 +1,15 @@
 from urllib.parse import urlparse
 from pyspark.sql import SparkSession, DataFrame
-from src.etl.silver.base.base_extractor import BaseExtractor
-from src.etl.silver.registry import register_extractor
+
+# from etl.silver.extractors.base_silver_extractors_strategy import BaseExtractor
+from src.registry import extractor
+import logging
+
+logger = logging.getLogger(__name__)
 
 
-@register_extractor("postgres")
-class PostgresExtractor(BaseExtractor):
+@extractor.register("postgres", "pg")
+class PostgresExtractor:
     def __init__(
         self,
         conn_str: str = None,
@@ -18,13 +22,10 @@ class PostgresExtractor(BaseExtractor):
         upper_bound: int = None,
         num_partitions: int = None,
     ):
-        if conn_str:
-            resolved_conn = conn_str
+        if not conn_str:
+            raise ValueError("Must provide conn_str")
 
-        else:
-            raise ValueError("Must provide either conn_str or env_var")
-
-        parsed = urlparse(resolved_conn)
+        parsed = urlparse(conn_str)
 
         self.host = parsed.hostname
         self.port = parsed.port or 5432
@@ -43,49 +44,44 @@ class PostgresExtractor(BaseExtractor):
             "fetchsize": str(fetch_size),
         }
 
-        # Optional parallel read config
         self.partition_column = partition_column
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
         self.num_partitions = num_partitions
 
-    # ------------------------------------------------------------------
     def extract(self, spark: SparkSession) -> DataFrame:
         """Extract data into Spark DataFrame"""
-
-        print(f"Connecting to: {self.host}:{self.port}/{self.database}")
-        print(f"Schema: {self.schema}")
+        logger.info(f"Connecting to: {self.host}:{self.port}/{self.database}")
+        logger.info(f"Schema: {self.schema}")
 
         if self.query:
             source = "custom query"
-            wrapped_query = f"({self.query}) as subquery"
-            read_target = wrapped_query
+            read_target = f"({self.query}) as subquery"
         elif self.table:
             source = f"{self.schema}.{self.table}"
             read_target = f"{self.schema}.{self.table}"
         else:
-            raise ValueError("Either table or query must be provided.")
+            raise ValueError("Either 'table' or 'query' must be provided.")
 
-        print(f"Extracting from {source} ...")
+        logger.info(f"Extracting from {source} ...")
 
-        read_options = dict(
-            url=self.url,
-            table=read_target,
-            properties=self.properties,
-        )
-
-        # Parallel read if parameters are provided
         if self.partition_column and self.num_partitions:
-            read_options.update(
-                {
-                    "column": self.partition_column,
-                    "lowerBound": self.lower_bound or 0,
-                    "upperBound": self.upper_bound or 100000,
-                    "numPartitions": self.num_partitions,
-                }
+            df = spark.read.jdbc(
+                url=self.url,
+                table=read_target,
+                column=self.partition_column,
+                lowerBound=self.lower_bound or 0,
+                upperBound=self.upper_bound or 100000,
+                numPartitions=self.num_partitions,
+                properties=self.properties,
+            )
+        else:
+            df = spark.read.jdbc(
+                url=self.url,
+                table=read_target,
+                properties=self.properties,
             )
 
-        df = spark.read.jdbc(**read_options)
-
-        print(f"Extracted {df.count()} rows from {source}")
+        row_count = df.count()
+        logger.info(f"✅ Extracted {row_count:,} rows from {source}")
         return df

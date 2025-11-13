@@ -15,7 +15,9 @@ if not mediastack_api_key and Connection_String == "":
 @task()
 def extract_get_mediastack_bronze_pipeline():
     try:
-        from src.etl.bronze.extract.data_structure_extract_strategy import DataExtractor
+        from src.etl.bronze.extractors.data_structure_extract_strategy import (
+            DataExtractor,
+        )
 
         config = {
             "type": "api_url",
@@ -79,7 +81,7 @@ def transform_add_sf_running_mediastack_bronze_pipeline(data):
         )
         from src.function.index.sf_generator import SnowflakeGenerator
         from airflow.hooks.base import BaseHook
-        from src.etl.bronze.load.utils.csv_buffer import prepare_csv_buffer
+        from function.utils.csv_loader.csv_buffer import prepare_csv_buffer
 
         conn = BaseHook.get_connection("postgres_localhost_5433")
         dsn = f"dbname={conn.schema} user={conn.login} password={conn.password} host={conn.host} port={conn.port}"
@@ -100,17 +102,44 @@ def transform_add_sf_running_mediastack_bronze_pipeline(data):
 
 
 @task()
-def load_get_mediastack_bronze_pipeline(data):
+def transform_mediastack_silver_pipeline(data):
     try:
-        from src.etl.bronze.load.data_structure_loader_strategy import (
+        from src.etl.bronze.transform.data_silver_cleaning_strategy import (
+            SilverCleaningMediastack,
+        )
+        from function.utils.csv_loader.csv_buffer import prepare_csv_buffer
+        from src.etl.bronze.transform.data_format_strategy import (
+            FromDataFrameToCsvFormatter,
+            DataFormatter,
+        )
+
+        csv_buffer, _ = prepare_csv_buffer(data)
+        df = pd.read_csv(csv_buffer, sep=";", encoding="utf-8-sig")
+        df = SilverCleaningMediastack().silverCleaning(df)
+        df["layer"] = "silver"
+        csv = DataFormatter(
+            FromDataFrameToCsvFormatter(index=False, encoding="utf-8-sig", sep=";")
+        ).formatting(df)
+        return csv
+    except Exception as e:
+        print(f"Failed to transform MediaStack data for Silver Pipeline: {e}")
+        raise AirflowException(
+            "Force transform_mediastack_silver_pipeline task to fail"
+        )
+
+
+@task()
+def load_get_mediastack_bronze_pipeline(data, schema, table, conflict_columns):
+    try:
+        from src.etl.bronze.loader.data_structure_loader_strategy import (
             PostgresUpsertLoader,
         )
 
         loader = PostgresUpsertLoader(
             dsn="postgres_localhost_5433",
-            schema="bronze",
-            table="source_news_articles_mediastack",
-            conflict_columns=["url"],
+            schema=schema,
+            table=table,
+            conflict_columns=conflict_columns,
             delimiter=";",
         )
         loader.loader(data)
@@ -125,18 +154,28 @@ with DAG(
     schedule_interval="0 6 * * *",
     start_date=datetime(2025, 10, 6),
     catchup=False,
-    tags=["bronze", "mediastack"],
+    tags=["bronze,silver", "mediastack"],
 ) as dag:
     with TaskGroup(
-        "pipeline_bronze_mediastack", tooltip="Extract, Transform and Load"
-    ) as etl_group:
+        "pipeline_bronze_mediastack", tooltip="Extract, Transform and Load to Bronze"
+    ) as etl_bronze_group:
         data_extract = extract_get_mediastack_bronze_pipeline()
         data_transform = transform_get_mediastack_bronze_pipeline(data_extract)
         data_add_sf = transform_add_sf_running_mediastack_bronze_pipeline(
             data_transform
         )
-        data_load = load_get_mediastack_bronze_pipeline(data_add_sf)
+        data_bronze_load = load_get_mediastack_bronze_pipeline(
+            data_add_sf, "bronze", "source_news_articles_mediastack", ["url"]
+        )
+        data_extract >> data_transform >> data_add_sf >> data_bronze_load
 
-        data_extract >> data_transform >> data_add_sf >> data_load
+    with TaskGroup(
+        "pipeline_silver_clean_mediastack", tooltip="Transform and Load to Silver"
+    ) as tl_silver_group:
+        data_silver_transform = transform_mediastack_silver_pipeline(data_add_sf)
+        data_silver_load = load_get_mediastack_bronze_pipeline(
+            data_silver_transform, "silver", "clean_news_articles_mediastack", ["url"]
+        )
+        data_silver_transform >> data_silver_load
 
-    etl_group
+    etl_bronze_group >> tl_silver_group

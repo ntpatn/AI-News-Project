@@ -7,9 +7,9 @@ from uuid import uuid4
 from time import time
 from typing import Iterator
 
-from src.etl.bronze.load.utils.csv_buffer import prepare_csv_buffer
-from src.etl.bronze.load.utils.validation import validate_columns
-from src.etl.bronze.load.sql.upsert_builder import build_upsert_condition
+from function.utils.csv_loader.csv_buffer import prepare_csv_buffer
+from function.utils.csv_loader.validation import validate_columns
+from function.utils.csv_loader.sql_condition.upsert_builder import build_upsert_condition
 
 logger = logging.getLogger(__name__)
 

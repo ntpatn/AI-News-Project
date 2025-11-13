@@ -22,7 +22,7 @@ class Registry:
     def create(self, alias: str, **kwargs):
         key = (alias or "").lower()
         if key not in self._makers:
-            known = ", ".join(sorted(self._makers)[:30])
+            known = ", ".join(sorted(self._makers)[:1000])
             raise ValueError(
                 f"[{self.name}] Unknown alias '{alias}'. Known: {known}..."
             )
@@ -35,11 +35,9 @@ class Registry:
         return sorted(self._makers.keys())
 
 
-model = Registry("model")
-feature = Registry("feature")
-reducer = Registry("reducer")
-selector = Registry("selector")
-train_tuning = Registry("train_tuning")
+extractor = Registry("extractor")
+transformer = Registry("transformer")
+loader = Registry("loader")
 
 
 def load_plugins(base_pkg, subfolder: str):

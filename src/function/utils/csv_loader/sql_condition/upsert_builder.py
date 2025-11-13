@@ -1,4 +1,3 @@
-# src/etl/bronze/load/sql/upsert_builder.py
 from psycopg2 import sql
 
 

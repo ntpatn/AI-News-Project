@@ -4,6 +4,7 @@ from src.etl.bronze.transform.utils.silver_clean_utils import (
     normalize_text,
     normalize_url,
     normalize_timestamp,
+    extract_root_domain,
     NONE_VALUES,
 )
 
@@ -14,18 +15,19 @@ class SilverCleaningCurrentsapi(BaseSilverCleaning):
         df.rename(
             columns={
                 "image": "image_url",
-                "source": "source_name",
+                "source": "source_news",
                 "published": "published_at",
             },
             inplace=True,
         )
+        df["source_news"] = df["url"].map(extract_root_domain)
         for col in [
             "author",
             "title",
             "description",
             "category",
             "language",
-            "source_name",
+            "source_news",
         ]:
             if col in df.columns:
                 df[col] = df[col].map(normalize_text)
@@ -36,40 +38,53 @@ class SilverCleaningCurrentsapi(BaseSilverCleaning):
             lambda x: normalize_timestamp(x, "+0700")
         )
         df["region"] = df.get("region", None)
-        df["content"] = None
         df = df[df["url"].notna()].drop_duplicates(subset=["url"])
+
         return df
 
 
 class SilverCleaningMediastack(BaseSilverCleaning):
     def silverCleaning(self, df: pd.DataFrame) -> pd.DataFrame:
-        df = df.replace(list(NONE_VALUES), None)
+        df.replace(list(NONE_VALUES), None, inplace=True)
         df.rename(
             columns={
                 "image": "image_url",
                 "country": "region",
-                "source": "source_name",
+                "source": "source_news",
             },
             inplace=True,
         )
-        for col in [
+
+        cols_to_clean = [
             "author",
             "title",
             "description",
             "category",
             "language",
-            "source_name",
-        ]:
+            "source_news",
+        ]
+        for col in [c for c in cols_to_clean if c in df.columns]:
+            df[col] = df[col].map(normalize_text)
+
+        # ✅ clean url
+        for col in ["url", "image_url"]:
             if col in df.columns:
-                df[col] = df[col].map(normalize_text)
-        df["url"] = df["url"].map(normalize_url)
+                df[col] = df[col].map(normalize_url)
+
+        # ✅ normalize language
         if "language" in df.columns:
             df["language"] = df["language"].str.lower()
-        df["published_at"] = df["published_at"].map(
-            lambda x: normalize_timestamp(x, "+0700")
-        )
-        df["content"] = None
-        df = df[df["url"].notna()].drop_duplicates(subset=["url"])
+
+        # ✅ normalize timestamp
+        if "published_at" in df.columns:
+            df["published_at"] = df["published_at"].map(
+                lambda x: normalize_timestamp(x, "+0700")
+            )
+
+        # ✅ drop null url & duplicates
+        df.dropna(subset=["url"], inplace=True)
+        df.drop_duplicates(subset=["url"], inplace=True)
+
         return df
 
 
@@ -80,16 +95,18 @@ class SilverCleaningNewsapi(BaseSilverCleaning):
             columns={
                 "url_to_image": "image_url",
                 "source_id": "source_id",
-                "source_name": "source_name",
+                "source": "source_news",
                 "publishedAt": "published_at",
             },
             inplace=True,
         )
-        for col in ["author", "title", "description", "source_name", "content"]:
+        df["source_news"] = df["url"].map(extract_root_domain)
+        for col in ["author", "title", "description", "source_news", "content"]:
             if col in df.columns:
                 df[col] = df[col].map(normalize_text)
-        df["content"] = df["content"].str.replace(r"\[\+\d+\s*chars\]", "", regex=True)
-        df["url"] = df["url"].map(normalize_url)
+        for col in ["url", "image_url"]:
+            if col in df.columns:
+                df[col] = df[col].map(normalize_url)
         if "language" in df.columns:
             df["language"] = df["language"].str.lower()
         df["published_at"] = df["published_at"].map(

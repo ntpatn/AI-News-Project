@@ -2,6 +2,9 @@ from typing import Any, List, Union
 import pandas as pd
 from src.etl.bronze.transform.base_transform import BaseFormatting
 from typing import Optional
+import tempfile
+import json
+import os
 
 
 class FromJsonToDataFrameFormatter(BaseFormatting):
@@ -31,15 +34,6 @@ class FromDataFrameToCsvFormatter(BaseFormatting):
         sep: str = ",",
         columns: Optional[list[str]] = None,
     ) -> None:
-        """
-        Convert DataFrame → CSV string (in-memory only, no local file).
-
-        Args:
-            index (bool): Include DataFrame index in CSV output.
-            encoding (str): Encoding used for CSV text.
-            sep (str): Field separator.
-            columns (Optional[list[str]]): List of columns to include.
-        """
         self.index = index
         self.encoding = encoding
         self.sep = sep
@@ -55,6 +49,55 @@ class FromDataFrameToCsvFormatter(BaseFormatting):
             columns=self.columns,
             encoding=self.encoding,
         )
+
+
+class JsonToTempFormatter(BaseFormatting):
+    def __init__(self, prefix: str = "tempjson_") -> None:
+        self.prefix = prefix
+        os.makedirs("/tmp", exist_ok=True)
+
+    def formatting(self, obj: Any) -> str:
+        if not isinstance(obj, (dict, list)):
+            raise TypeError("JsonToTempFormatter expects dict or list")
+
+        tf = tempfile.NamedTemporaryFile(
+            prefix=self.prefix, suffix=".json", delete=False, dir="/tmp"
+        )
+        with open(tf.name, "w", encoding="utf-8") as f:
+            json.dump(obj, f, default=str)
+        return tf.name
+
+
+class CsvToTempFormatter(BaseFormatting):
+    def __init__(self, prefix: str = "tempcsv_") -> None:
+        self.prefix = prefix
+        os.makedirs("/tmp", exist_ok=True)
+
+    def formatting(self, obj: Any) -> str:
+        if not isinstance(obj, pd.DataFrame):
+            raise TypeError("CsvToTempFormatter expects pandas DataFrame")
+
+        tf = tempfile.NamedTemporaryFile(
+            prefix=self.prefix, suffix=".csv", delete=False, dir="/tmp"
+        )
+        obj.to_csv(tf.name, sep=";", index=False, encoding="utf-8-sig")
+        return tf.name
+
+
+class ParquetToTempFormatter(BaseFormatting):
+    def __init__(self, prefix: str = "tempparquet_") -> None:
+        self.prefix = prefix
+        os.makedirs("/tmp", exist_ok=True)
+
+    def formatting(self, obj: Any) -> str:
+        if not isinstance(obj, pd.DataFrame):
+            raise TypeError("ParquetToTempFormatter expects pandas DataFrame")
+
+        tf = tempfile.NamedTemporaryFile(
+            prefix=self.prefix, suffix=".parquet", delete=False, dir="/tmp"
+        )
+        obj.to_parquet(tf.name, index=False)
+        return tf.name
 
 
 class DataFormatter:

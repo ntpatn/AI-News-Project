@@ -26,7 +26,9 @@ if not api_key:
 def extract_get_newsapi_bronze_pipeline(category: str):
     try:
         print(f"[extract] category={category}")
-        from src.etl.bronze.extract.data_structure_extract_strategy import DataExtractor
+        from src.etl.bronze.extractors.data_structure_extract_strategy import (
+            DataExtractor,
+        )
 
         config = {
             "type": "api_url",
@@ -79,7 +81,7 @@ def transform_get_newsapi_bronze_pipeline(batch: dict):
             "batch_id": ctx["run_id"],
             "source_system": "newsapi",
             "layer": "bronze",
-            "country": COUNTRY,
+            "region": COUNTRY,
             "language": LANGUAGE,
         }
         df = MetadataAppender(metadata).meta(df)
@@ -113,7 +115,7 @@ def transform_add_sf_running_newsapi_bronze_pipeline(batch: dict):
         )
         from src.function.index.sf_generator import SnowflakeGenerator
         from airflow.hooks.base import BaseHook
-        from src.etl.bronze.load.utils.csv_buffer import prepare_csv_buffer
+        from function.utils.csv_loader.csv_buffer import prepare_csv_buffer
 
         category = batch["category"]
         print(f"[transform] category={category}")
@@ -128,17 +130,53 @@ def transform_add_sf_running_newsapi_bronze_pipeline(batch: dict):
             FromDataFrameToCsvFormatter(index=False, encoding="utf-8-sig", sep=";")
         ).formatting(df)
         return {"category": category, "csv": csv}
+    except AirflowSkipException:
+        raise
     except Exception as e:
         print(f"Failed to transform add id_sf in newsapi data: {e}")
-        raise AirflowException(
+        raise AirflowSkipException(
             "Force transform_add_sf_running_newsapi_bronze_pipeline task to fail"
         )
 
 
-@task()
-def load_get_newsapi_bronze_pipeline(batch: dict):
+@task(trigger_rule="none_failed_min_one_success")
+def transform_newsapi_silver_pipeline(batch: dict):
     try:
-        from src.etl.bronze.load.data_structure_loader_strategy import (
+        from src.etl.bronze.transform.data_silver_cleaning_strategy import (
+            SilverCleaningNewsapi,
+        )
+        from function.utils.csv_loader.csv_buffer import prepare_csv_buffer
+        from src.etl.bronze.transform.data_format_strategy import (
+            FromDataFrameToCsvFormatter,
+            DataFormatter,
+        )
+
+        category = batch["category"]
+        print(f"[transform] Silver category={category}")
+        data = batch["csv"]
+        csv_buffer, _ = prepare_csv_buffer(data)
+        df = pd.read_csv(csv_buffer, sep=";", encoding="utf-8-sig")
+        df = SilverCleaningNewsapi().silverCleaning(df)
+        df["layer"] = "silver"
+        csv = DataFormatter(
+            FromDataFrameToCsvFormatter(index=False, encoding="utf-8-sig", sep=";")
+        ).formatting(df)
+        return {"category": category, "csv": csv}
+    except AirflowSkipException:
+        raise
+    except Exception as e:
+        print(f"Failed to transform newsapi data for Silver Pipeline: {e}")
+        raise AirflowSkipException(
+            "Force transform_newsapi_silver_pipeline task to fail"
+        )
+
+
+@task(trigger_rule="none_failed_min_one_success")
+def load_get_newsapi_bronze_pipeline(
+    batch: dict, schema: str, table: str, conflict_columns: list
+):
+    try:
+        from src.etl.bronze.loader.data_structure_loader_strategy import (
             PostgresUpsertLoader,
         )
         import io
@@ -151,7 +189,6 @@ def load_get_newsapi_bronze_pipeline(batch: dict):
         if not csv_text or not csv_text.strip():
             raise AirflowSkipException("No CSV content. Skip loading.")
 
-        # 2) เช็ก header ให้มีคอลัมน์ที่ต้องใช้ (เช่น url) → ถ้าไม่มีให้ข้าม
         reader = csv.reader(io.StringIO(csv_text), delimiter=";")
         header = next(reader, None) or []
         if "url" not in header:
@@ -161,9 +198,9 @@ def load_get_newsapi_bronze_pipeline(batch: dict):
 
         loader = PostgresUpsertLoader(
             dsn="postgres_localhost_5433",
-            schema="bronze",
-            table="source_news_articles_newsapi",
-            conflict_columns=["url"],
+            schema=schema,
+            table=table,
+            conflict_columns=conflict_columns,
             delimiter=";",
         )
         loader.loader(csv_text)
@@ -184,18 +221,35 @@ with DAG(
     schedule="0 6 * * *",
     start_date=datetime(2025, 10, 6),
     catchup=False,
-    tags=["bronze", "newsapi"],
+    tags=["bronze,silver", "newsapi"],
 ) as dag:
     with TaskGroup(
-        "pipeline_bronze_newsapi", tooltip="Extract, Transform and Load"
-    ) as etl_group:
+        "pipeline_bronze_newsapi", tooltip="Extract, Transform and Load to Bronze"
+    ) as etl_bronze_group:
         extracted = extract_get_newsapi_bronze_pipeline.expand(category=CATEGORIES)
         transformed = transform_get_newsapi_bronze_pipeline.expand(batch=extracted)
         running = transform_add_sf_running_newsapi_bronze_pipeline.expand(
             batch=transformed
         )
-        loaded = load_get_newsapi_bronze_pipeline.expand(batch=running)
+        data_bronze_load = load_get_newsapi_bronze_pipeline.partial(
+            schema="bronze",
+            table="source_news_articles_newsapi",
+            conflict_columns=["url"],
+        ).expand(batch=running)
 
-        extracted >> transformed >> running >> loaded
+        extracted >> transformed >> running >> data_bronze_load
+    with TaskGroup(
+        "pipeline_silver_clean_newsapi",
+        tooltip="Transform and Load to Silver",
+    ) as tl_silver_group:
+        data_silver_transform = transform_newsapi_silver_pipeline.expand(batch=running)
+        data_silver_load = load_get_newsapi_bronze_pipeline.partial(
+            schema="silver",
+            table="clean_news_articles_newsapi",
+            conflict_columns=["url"],
+        ).expand(
+            batch=data_silver_transform,
+        )
+        data_silver_transform >> data_silver_load
 
-    etl_group
+    etl_bronze_group >> tl_silver_group

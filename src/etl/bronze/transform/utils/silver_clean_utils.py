@@ -1,4 +1,3 @@
-import re
 import pandas as pd
 from dateutil import parser
 import pytz
@@ -36,14 +35,45 @@ def normalize_timestamp(ts, default_tz="+0700"):
 
 
 def normalize_text(s):
-    """Trim, remove HTML, and normalize None-like strings"""
+    import re
+    import html
+
+    """Aggressive text cleaner — remove HTML, entities, control chars, and symbol noise."""
     if s is None or pd.isna(s):
         return None
+
     s = str(s).strip()
     if s in NONE_VALUES:
         return None
-    s = re.sub(r"<[^>]+>", "", s)
-    s = s.replace("\u200b", "").strip()
+
+    # 1️⃣ Decode HTML entities (&amp; -> &, &#8217; -> ’)
+    s = html.unescape(s)
+
+    # 2️⃣ Remove HTML tags
+    s = re.sub(r"<[^>]+>", " ", s)
+
+    # 3️⃣ Remove control and invisible chars
+    s = re.sub(r"[\r\n\t\u200b\xa0]+", " ", s)
+
+    # 4️⃣ Remove entity-like junk (&quot;, &apos;, etc.)
+    s = re.sub(r"&[a-z]+;", " ", s)
+
+    # 5️⃣ Remove symbol noise (keep letters, numbers, and sentence punctuations)
+    s = re.sub(r"[•·●►▶▷☛→←↔⇨⇦■□★☆◆◇※→→©®™∞¶§]+", " ", s)
+    s = re.sub(r"[“”‘’‛❛❜‚„‹›«»]", "'", s)  # normalize quotes
+    s = re.sub(r"[‐-‒–—―]", "-", s)  # normalize dash
+
+    # 6️⃣ Remove remaining non-word symbols except basic punctuations
+    s = re.sub(r"[^A-Za-z0-9ก-๙\s.,!?%:;()'\-_/]", " ", s)
+
+    # 7️⃣ Normalize spaces
+    s = re.sub(r"\s{2,}", " ", s).strip()
+
+    # 8️⃣ If after cleaning it’s empty → None
+    if not s or s in NONE_VALUES:
+        return None
+
+    return s
 
 
 def normalize_url(u):
@@ -54,3 +84,18 @@ def normalize_url(u):
     if u in NONE_VALUES:
         return None
     return u if u.lower().startswith("http") else None
+
+
+def extract_root_domain(url: str):
+    from urllib.parse import urlparse
+
+    if not url:
+        return None
+    try:
+        domain = urlparse(url).netloc.replace("www.", "")
+        parts = domain.split(".")
+        if len(parts) >= 2:
+            return parts[-2]
+        return parts[0]
+    except Exception:
+        return None

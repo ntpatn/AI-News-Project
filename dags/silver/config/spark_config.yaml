@@ -1,0 +1,12 @@
+spark:
+  appName: AI-News-ETL
+  master: local[*]             # ค่า default ถ้าไม่มี ENV มาทับ
+  config:
+    driver_memory: 4g
+    shuffle_partitions: 8
+    timezone: UTC
+    compression: snappy
+    adaptive_enabled: true
+    arrow_enabled: true
+  jars:
+    - /opt/spark_drivers/postgresql-42.7.3.jar

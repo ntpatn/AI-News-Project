@@ -16,6 +16,10 @@ x-airflow-common: &airflow-common
     AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: "0"
     AIRFLOW__SCHEDULER__PARSING_PROCESSES: "2"
     AIRFLOW__SCHEDULER__USE_FILE_HASH: "True"
+    AIRFLOW__METRICS__STATSD_ON: "True"
+    AIRFLOW__METRICS__STATSD_HOST: statsd-exporter
+    AIRFLOW__METRICS__STATSD_PORT: "9125"
+    AIRFLOW__METRICS__STATSD_PREFIX: airflow
     PYTHONPATH: /opt/airflow:/opt/airflow/src:/opt/airflow/dags
     MLFLOW_TRACKING_URI: http://mlflow:${MLFLOW_PORT}
     MLFLOW_S3_ENDPOINT_URL: http://minio:9000
@@ -27,9 +31,7 @@ x-airflow-common: &airflow-common
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
     - ${AIRFLOW_PROJ_DIR:-.}/src:/opt/airflow/src
     - ${AIRFLOW_PROJ_DIR:-.}/requirements.txt:/opt/airflow/requirements.txt
-  # ลบบรรทัดนี้ออก หรือเปลี่ยนเป็น root
-  # user: "${AIRFLOW_UID:-50000}:0"
-  user: "0:0" # รันเป็น root
+  user: "0:0"
   depends_on: &airflow-common-depends-on
     postgres-airflow:
       condition: service_healthy
@@ -106,6 +108,9 @@ services:
       airflow-init:
         condition: service_completed_successfully
     restart: unless-stopped
+    networks:
+      - default
+      - monitor-net
 
   airflow-scheduler:
     <<: *airflow-common
@@ -121,6 +126,9 @@ services:
       airflow-init:
         condition: service_completed_successfully
     restart: unless-stopped
+    networks:
+      - default
+      - monitor-net
 
   airflow-triggerer:
     <<: *airflow-common
@@ -140,6 +148,9 @@ services:
       airflow-init:
         condition: service_completed_successfully
     restart: unless-stopped
+    networks:
+      - default
+      - monitor-net
 
   minio:
     image: minio/minio:latest
@@ -214,6 +225,47 @@ services:
       - "${MLFLOW_PORT:-5050}:${MLFLOW_PORT:-5050}"
     restart: unless-stopped
 
+  statsd-exporter:
+    image: prom/statsd-exporter:latest
+    command:
+      - --statsd.mapping-config=/tmp/statsd_mapping.yml
+    volumes:
+      - ./config/statsd_mapping.yml:/tmp/statsd_mapping.yml
+    restart: always
+    networks:
+      - default
+      - monitor-net
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-24h}
+    restart: always
+    networks:
+      - monitor-net
+      - default
+  node-exporter:
+    image: prom/node-exporter:latest
+    networks:
+      - monitor-net
+  grafana:
+    image: grafana/grafana:latest
+    volumes:
+      - ./grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    ports:
+      - 3000:3000
+    networks:
+      - monitor-net
+
+networks:
+  monitor-net:
+    driver: bridge
 volumes:
   pg_airflow:
   pg_mlflow:

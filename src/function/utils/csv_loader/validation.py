@@ -1,4 +1,3 @@
-# src/etl/bronze/load/utils/validation.py
 def validate_columns(
     cur, schema: str, table: str, header: list[str], conflict_columns: list[str]
 ):

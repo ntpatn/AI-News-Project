@@ -34,5 +34,11 @@ data/**
 
 *.pyc
 
+grafana-data/
+*.grafana-data
+prometheus-data/
+*.prometheus-data
+.prometheus.yml/
+*.prometheus.yml
 
 
