@@ -23,7 +23,11 @@ if not currentsapi_api_key:
 LANGUAGE = "en"
 
 
-@task()
+@task(
+    retries=3,
+    retry_delay=pd.Timedelta(minutes=2),
+    execution_timeout=pd.Timedelta(minutes=20),
+)
 def extract_get_currentsapi_bronze_pipeline():
     data = None
     from src.etl.bronze.extractors.data_structure_extract_strategy import (
@@ -36,6 +40,9 @@ def extract_get_currentsapi_bronze_pipeline():
             "type": "api_url",
             "path": "https://api.currentsapi.services/v1/latest-news",
             "params": {"language": LANGUAGE, "apiKey": currentsapi_api_key},
+            "max_retry": 5,
+            "base_delay": 5,
+            "timeout": 30,
         }
         data = DataExtractor.get_extractor(config).extractor()
         json_path = DataFormatter(
@@ -220,6 +227,87 @@ def load_get_currentsapi_bronze_pipeline(
         )
 
 
+@task()
+def validate_currentsapi_bronze_pipeline_with_ge_core(csv_path: str) -> str:
+    import pandas as pd
+    import src.etl.validators.gx_core.validation_utils as gx_utils
+    from src.etl.validators.gx_core.expectations.bronze_currentsapi import (
+        bronze_expectations_currentsapi,
+    )
+
+    df = None
+    debug_memory_and_files_pandas("validate_bronze:start")
+    try:
+        df = pd.read_csv(csv_path, sep=";", encoding="utf-8-sig")
+
+        # สร้าง batch แบบ auto
+        batch = gx_utils.setup_gx_context_auto(df, name="bronze_currentsapi")
+
+        # โหลด expectation set
+        expectations = bronze_expectations_currentsapi()
+
+        # run validation
+        results = gx_utils.run_validations(batch, expectations)
+
+        gx_utils.log_validation_summary(csv_path, df, results)
+        gx_utils.raise_validation_error(results)
+
+        return csv_path
+    except AirflowSkipException:
+        raise
+    except Exception as e:
+        log.error(f"Failed to validation CurrentsAPI data to database: {e}")
+        raise AirflowException(
+            "Force validate_currentsapi_bronze_pipeline_with_ge_core task to fail"
+        )
+    finally:
+        finalize_task(
+            "validate_bronze:end",
+            obj=(df, locals().get("batch"), locals().get("expectations")),
+            debug_func=debug_memory_and_files_pandas,
+        )
+
+
+@task()
+def validate_currentsapi_silver_pipeline_with_ge_core(csv_path: str) -> str:
+    import pandas as pd
+    import src.etl.validators.gx_core.validation_utils as gx_utils
+    from src.etl.validators.gx_core.expectations.silver_currentsapi import (
+        silver_expectations_currentsapi,
+    )
+
+    df = None
+    debug_memory_and_files_pandas("validate_silver:start")
+    try:
+        df = pd.read_csv(csv_path, sep=";", encoding="utf-8-sig")
+
+        batch = gx_utils.setup_gx_context_auto(df, name="silver_currentsapi")
+        expectations = silver_expectations_currentsapi()
+
+        results = gx_utils.run_validations(batch, expectations)
+
+        gx_utils.log_validation_summary(csv_path, df, results)
+        gx_utils.raise_validation_error(results)
+
+        return csv_path
+
+    except AirflowSkipException:
+        raise
+
+    except Exception as e:
+        log.error(f"Failed to validate Silver CurrentsAPI data: {e}")
+        raise AirflowException(
+            "Force validate_currentsapi_silver_pipeline_with_ge_core task to fail"
+        )
+
+    finally:
+        finalize_task(
+            "validate_silver:end",
+            obj=(df, locals().get("batch"), locals().get("expectations")),
+            debug_func=debug_memory_and_files_pandas,
+        )
+
+
 with DAG(
     dag_id="pipeline_bronze_currentsapi",
     schedule_interval="0 6 * * *",
@@ -233,19 +321,32 @@ with DAG(
         data_add_sf = transform_add_sf_running_currentsapi_bronze_pipeline(
             data_transform
         )
+        data_validate = validate_currentsapi_bronze_pipeline_with_ge_core(data_add_sf)
         data_bronze_load = load_get_currentsapi_bronze_pipeline(
-            data_add_sf, "bronze", "source_news_articles_currentsapi", ["id", "url"]
+            data_validate, "bronze", "source_news_articles_currentsapi", ["id", "url"]
         )
-        data_extract >> data_transform >> data_add_sf >> data_bronze_load
+        (
+            data_extract
+            >> data_transform
+            >> data_add_sf
+            >> data_validate
+            >> data_bronze_load
+        )
 
     with TaskGroup("pipeline_silver_clean_currentsapi") as tl_silver_group:
-        data_silver_transform = transform_currentsapi_silver_pipeline(data_add_sf)
+        data_silver_transform = transform_currentsapi_silver_pipeline(data_validate)
+
+        data_silver_validate = validate_currentsapi_silver_pipeline_with_ge_core(
+            data_silver_transform
+        )
+
         data_silver_load = load_get_currentsapi_bronze_pipeline(
-            data_silver_transform,
+            data_silver_validate,
             "silver",
             "clean_news_articles_currentsapi",
             ["id", "url"],
         )
-        data_silver_transform >> data_silver_load
+
+        data_silver_transform >> data_silver_validate >> data_silver_load
 
     etl_bronze_group >> tl_silver_group

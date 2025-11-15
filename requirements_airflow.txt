@@ -8,3 +8,5 @@ requests
 pyspark
 psycopg2-binary
 tldextract==5.1.2
+great_expectations
+dbt

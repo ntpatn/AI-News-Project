@@ -5,6 +5,9 @@ from pathlib import Path
 from io import BytesIO
 from minio import Minio
 from .base_extractor import BaseStructureExtractor
+import logging
+
+log = logging.getLogger(__name__)
 
 
 class DbExtractor(BaseStructureExtractor):
@@ -198,24 +201,41 @@ class MinioExtractor(BaseStructureExtractor):
 
 
 class GetApiJsonUrlExtractor(BaseStructureExtractor):
-    def __init__(self, url: str, params: dict = None):
+    def __init__(
+        self, url: str, params: dict = None, max_retry=5, base_delay=5, timeout=30
+    ):
         self.url = url
         self.params = params
+        self.max_retry = max_retry
+        self.base_delay = base_delay
+        self.timeout = timeout
 
-    def extractor(self) -> pd.DataFrame:
-        try:
-            import requests
+    def extractor(self):
+        import requests
+        import time
+        import random
 
-            response = requests.get(self.url, self.params)
-            if (response.status_code == 200) and (
-                "application/json" in response.headers.get("Content-Type", "")
-            ):
-                data = response.json()
-                return data
-            else:
-                raise ValueError(f"Failed to fetch data from URL: {self.url}")
-        except Exception:
-            raise ValueError(f"Failed to fetch data from URL: {self.url}")
+        for attempt in range(1, self.max_retry + 1):
+            try:
+                log.info(f"[API] attempt #{attempt}")
+                res = requests.get(self.url, params=self.params, timeout=self.timeout)
+                res.raise_for_status()
+
+                if "application/json" in res.headers.get("Content-Type", ""):
+                    return res.json()
+
+                raise ValueError("Response not JSON")
+
+            except Exception as e:
+                if attempt == self.max_retry:
+                    log.error("API retry maxed out — fail")
+                    raise
+
+                delay = self.base_delay * (2 ** (attempt - 1)) + random.uniform(0, 2)
+                log.warning(
+                    f"[API] fail on attempt {attempt}: {e} — retry in {delay:.1f}s"
+                )
+                time.sleep(delay)
 
 
 class DataExtractor:
@@ -229,7 +249,13 @@ class DataExtractor:
             elif cfg["type"] == "csv":
                 return CsvExtractor(cfg["path"])
             elif cfg["type"] == "api_url":
-                return GetApiJsonUrlExtractor(cfg["path"], cfg.get("params"))
+                return GetApiJsonUrlExtractor(
+                    url=cfg["path"],
+                    params=cfg.get("params"),
+                    max_retry=cfg.get("max_retry", 3),
+                    base_delay=cfg.get("base_delay", 5),
+                    timeout=cfg.get("timeout", 30),
+                )
             elif cfg["type"] == "local_bbc":
                 return SourceBBCLocalExtractor(cfg["path"])
             elif cfg["type"] == "dvc":

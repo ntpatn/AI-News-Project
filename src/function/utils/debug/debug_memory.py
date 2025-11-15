@@ -10,6 +10,8 @@ import pandas as pd
 def debug_memory_and_files_pandas(
     tag: str = "", pattern: str = "/tmp/*", sample_limit: int = 2
 ):
+    if os.environ.get("DEBUG_MODE", "false").lower() != "true":
+        return
     process = psutil.Process(os.getpid())
     mem_mb = process.memory_info().rss / 1024**2
     dfs = [o for o in gc.get_objects() if isinstance(o, pd.DataFrame)]
@@ -61,5 +63,3 @@ def debug_memory_and_files_spark(tag: str = "", spark=None, pattern: str = "/tmp
     for f in tmp_files[:2]:
         print(f"     - {f} ({os.path.getsize(f) / 1024:.1f} KB)")
     print("---------------------------------------------------\n")
-
-
