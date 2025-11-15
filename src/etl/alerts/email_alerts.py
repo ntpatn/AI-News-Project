@@ -14,7 +14,7 @@ def get_alert_recipients() -> list:
     if raw.strip().startswith("["):
         try:
             return json.loads(raw)
-        except:
+        except Exception:
             pass
 
     # case 2 → comma-separated string
@@ -31,7 +31,7 @@ def build_dq_failure_body(context):
     dq_results = None
     try:
         dq_results = ti.xcom_pull(task_ids=task.task_id, key="dq_results")
-    except:
+    except Exception:
         pass
 
     html = []

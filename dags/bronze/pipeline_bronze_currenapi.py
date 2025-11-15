@@ -15,6 +15,9 @@ from src.etl.bronze.transform.data_format_strategy import (
     CsvToTempFormatter,
     DataFormatter,
 )
+from src.etl.alerts.email_alerts import send_email_on_failure
+from airflow.operators.python import get_current_context
+from datetime import timedelta
 
 log = logging.getLogger(__name__)
 currentsapi_api_key = os.environ.get("CURRENTS_API_KEY")
@@ -22,11 +25,20 @@ if not currentsapi_api_key:
     raise AirflowException("CURRENTS_API_KEY environment variable is not set.")
 LANGUAGE = "en"
 
+default_args = {
+    "owner": "ai_news_pipeline",
+    "depends_on_past": False,
+    "email_on_failure": False,
+    "email_on_retry": False,
+    "retries": 2,
+    "retry_delay": timedelta(minutes=3),
+    "execution_timeout": timedelta(minutes=20),
+    "on_failure_callback": send_email_on_failure,
+}
+
 
 @task(
     retries=3,
-    retry_delay=pd.Timedelta(minutes=2),
-    execution_timeout=pd.Timedelta(minutes=20),
 )
 def extract_get_currentsapi_bronze_pipeline():
     data = None
@@ -64,7 +76,6 @@ def extract_get_currentsapi_bronze_pipeline():
 @task()
 def transform_get_currentsapi_bronze_pipeline(json_path: str) -> str:
     from src.etl.bronze.transform.data_metadata_strategy import MetadataAppender
-    from airflow.operators.python import get_current_context
 
     df = None
     try:
@@ -229,7 +240,6 @@ def load_get_currentsapi_bronze_pipeline(
 
 @task()
 def validate_currentsapi_bronze_pipeline_with_ge_core(csv_path: str) -> str:
-    import pandas as pd
     import src.etl.validators.gx_core.validation_utils as gx_utils
     from src.etl.validators.gx_core.expectations.bronze_currentsapi import (
         bronze_expectations_currentsapi,
@@ -248,6 +258,9 @@ def validate_currentsapi_bronze_pipeline_with_ge_core(csv_path: str) -> str:
 
         # run validation
         results = gx_utils.run_validations(batch, expectations)
+
+        ctx = get_current_context()
+        ctx["ti"].xcom_push(key="dq_results", value=results)
 
         gx_utils.log_validation_summary(csv_path, df, results)
         gx_utils.raise_validation_error(results)
@@ -285,7 +298,8 @@ def validate_currentsapi_silver_pipeline_with_ge_core(csv_path: str) -> str:
         expectations = silver_expectations_currentsapi()
 
         results = gx_utils.run_validations(batch, expectations)
-
+        ctx = get_current_context()
+        ctx["ti"].xcom_push(key="dq_results", value=results)
         gx_utils.log_validation_summary(csv_path, df, results)
         gx_utils.raise_validation_error(results)
 
@@ -310,6 +324,7 @@ def validate_currentsapi_silver_pipeline_with_ge_core(csv_path: str) -> str:
 
 with DAG(
     dag_id="pipeline_bronze_currentsapi",
+    default_args=default_args,
     schedule_interval="0 6 * * *",
     start_date=datetime(2025, 10, 6),
     catchup=False,
