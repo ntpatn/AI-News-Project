@@ -54,3 +54,5 @@ apache-airflow[statsd]
 great_expectations
 
 dbt
+pytest 
+pytest-mock

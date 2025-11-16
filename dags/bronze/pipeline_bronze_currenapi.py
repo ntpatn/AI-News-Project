@@ -198,7 +198,7 @@ def transform_currentsapi_silver_pipeline(csv_path_with_sf: str) -> str:
 
 
 @task()
-def load_get_currentsapi_bronze_pipeline(
+def load_get_currentsapi_pipeline(
     csv_path: str, schema: str, table: str, conflict_columns: list
 ) -> str:
     loader = None
@@ -228,9 +228,7 @@ def load_get_currentsapi_bronze_pipeline(
 
     except Exception as e:
         log.error(f"Failed to load CurrentsAPI data to database: {e}")
-        raise AirflowException(
-            "Force load_get_currentsapi_bronze_pipeline task to fail"
-        )
+        raise AirflowException("Force load_get_currentsapi_pipeline task to fail")
 
     finally:
         finalize_task(
@@ -283,7 +281,6 @@ def validate_currentsapi_bronze_pipeline_with_ge_core(csv_path: str) -> str:
 
 @task()
 def validate_currentsapi_silver_pipeline_with_ge_core(csv_path: str) -> str:
-    import pandas as pd
     import src.etl.validators.gx_core.validation_utils as gx_utils
     from src.etl.validators.gx_core.expectations.silver_currentsapi import (
         silver_expectations_currentsapi,
@@ -327,7 +324,8 @@ with DAG(
     default_args=default_args,
     schedule_interval="0 6 * * *",
     start_date=datetime(2025, 10, 6),
-    catchup=False,
+    catchup=True,
+    max_active_runs=2,
     tags=["bronze,silver", "currentsapi"],
 ) as dag:
     with TaskGroup("pipeline_bronze_currentsapi") as etl_bronze_group:
@@ -337,7 +335,7 @@ with DAG(
             data_transform
         )
         data_validate = validate_currentsapi_bronze_pipeline_with_ge_core(data_add_sf)
-        data_bronze_load = load_get_currentsapi_bronze_pipeline(
+        data_bronze_load = load_get_currentsapi_pipeline(
             data_validate, "bronze", "source_news_articles_currentsapi", ["id", "url"]
         )
         (
@@ -355,7 +353,7 @@ with DAG(
             data_silver_transform
         )
 
-        data_silver_load = load_get_currentsapi_bronze_pipeline(
+        data_silver_load = load_get_currentsapi_pipeline(
             data_silver_validate,
             "silver",
             "clean_news_articles_currentsapi",
