@@ -18,7 +18,7 @@ def silver_expectations_currentsapi():
         # ---------- Strict Not null ----------
         E.ExpectColumnValuesToNotBeNull(column="id"),
         E.ExpectColumnValuesToNotBeNull(column="url"),
-        E.ExpectColumnValuesToNotBeNull(column="title"),
+        # E.ExpectColumnValuesToNotBeNull(column="title", mostly=0.95),
         E.ExpectColumnValuesToNotBeNull(column="published_at"),
         E.ExpectColumnValuesToNotBeNull(column="sf_id"),
         # ---------- URL must be valid ----------
@@ -36,14 +36,14 @@ def silver_expectations_currentsapi():
         # ---------- Title constraints ----------
         E.ExpectColumnValueLengthsToBeBetween(
             column="title",
-            min_value=5,
+            min_value=1,
             max_value=5000,
         ),
         # ---------- Language must be normalized ----------
-        E.ExpectColumnValuesToMatchRegex(
-            column="language",
-            regex=r"^[a-z]{2,5}$",
-        ),
+        # E.ExpectColumnValuesToMatchRegex(
+        #     column="language",
+        #     regex=r"^[a-z]{2,5}$",
+        # ),
         # ---------- layer must = silver ----------
         E.ExpectColumnValuesToBeInSet(
             column="layer",

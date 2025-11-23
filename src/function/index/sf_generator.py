@@ -135,9 +135,6 @@ class SnowflakeDatabase:
             )
 
 
-# ==========================================================
-# SNOWFLAKE GENERATOR (STRICT)
-# ==========================================================
 class SnowflakeGenerator:
     def __init__(self, dsn, source_name, version_no=None, usercreate="system"):
         self.db = SnowflakeDatabase(dsn)

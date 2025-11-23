@@ -8,8 +8,11 @@ from time import time
 from typing import Iterator
 
 from function.utils.csv_loader.csv_buffer import prepare_csv_buffer
+from function.utils.connection.postgresql_dsn import build_postgresql_dsn
 from function.utils.csv_loader.validation import validate_columns
-from function.utils.csv_loader.sql_condition.upsert_builder import build_upsert_condition
+from function.utils.csv_loader.sql_condition.upsert_builder import (
+    build_upsert_condition,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,25 +39,6 @@ class PostgresUpsertLoader:
         self.conflict_columns = conflict_columns
         self.delimiter = delimiter
         self.batch_size = batch_size
-
-    # -------------------------------------------------------------------------
-    # CONNECTION
-    # -------------------------------------------------------------------------
-    def _build_dsn(self) -> str:
-        """Resolve PostgreSQL DSN from Airflow connection"""
-        from urllib.parse import quote_plus
-        from airflow.hooks.base import BaseHook
-
-        try:
-            c = BaseHook.get_connection(self.dsn)
-            user = quote_plus(c.login or "")
-            pwd = quote_plus(c.password or "")
-            host = c.host or ""
-            port = c.port or ""
-            db = c.schema or ""
-            return f"postgresql://{user}:{pwd}@{host}:{port}/{db}"
-        except Exception as e:
-            raise ValueError(f"Failed to build DSN: {e}") from e
 
     # -------------------------------------------------------------------------
     # CSV CHUNKER
@@ -200,7 +184,7 @@ class PostgresUpsertLoader:
 
         # 1️⃣ Prepare buffer + header + DSN
         csv_buffer, header = prepare_csv_buffer(csv_text, self.delimiter)
-        dsn = self._build_dsn()
+        dsn = build_postgresql_dsn(self.dsn)
 
         logger.info(
             f"Loading to {self.schema}.{self.table} (batch_size={self.batch_size})"

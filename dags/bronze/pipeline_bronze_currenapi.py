@@ -1,5 +1,4 @@
 import pandas as pd
-import os
 import json
 import logging
 from airflow.decorators import task
@@ -20,9 +19,7 @@ from airflow.operators.python import get_current_context
 from datetime import timedelta
 
 log = logging.getLogger(__name__)
-currentsapi_api_key = os.environ.get("CURRENTS_API_KEY")
-if not currentsapi_api_key:
-    raise AirflowException("CURRENTS_API_KEY environment variable is not set.")
+
 LANGUAGE = "en"
 
 default_args = {
@@ -45,7 +42,11 @@ def extract_get_currentsapi_bronze_pipeline():
     from src.etl.bronze.extractors.data_structure_extract_strategy import (
         DataExtractor,
     )
+    import os
 
+    currentsapi_api_key = os.environ.get("CURRENTS_API_KEY")
+    if not currentsapi_api_key:
+        raise AirflowException("CURRENTS_API_KEY environment variable is not set.")
     debug_memory_and_files_pandas("extract:start")
     try:
         config = {
@@ -76,11 +77,14 @@ def extract_get_currentsapi_bronze_pipeline():
 @task()
 def transform_get_currentsapi_bronze_pipeline(json_path: str) -> str:
     from src.etl.bronze.transform.data_metadata_strategy import MetadataAppender
+    from src.function.index.sf_generator import SnowflakeGenerator
+    from function.utils.connection.postgresql_dsn import build_postgresql_dsn
 
     df = None
     try:
         debug_memory_and_files_pandas("transform:start")
-
+        dsn = build_postgresql_dsn("postgres_localhost_5433")
+        sf = SnowflakeGenerator(dsn=dsn, source_name="bronze.currentsapi", version_no=1)
         with open(json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
@@ -98,10 +102,10 @@ def transform_get_currentsapi_bronze_pipeline(json_path: str) -> str:
             "batch_id": ctx["run_id"],
             "source_system": "currentsapi",
             "layer": "bronze",
-            "language": "en",
+            "language": LANGUAGE,
         }
         df = MetadataAppender(metadata).meta(df)
-
+        df["sf_id"] = sf.bulk_generate_fast(len(df))
         csv_path = DataFormatter(
             CsvToTempFormatter(prefix="currentsapi_bronze_")
         ).formatting(df)
@@ -122,43 +126,6 @@ def transform_get_currentsapi_bronze_pipeline(json_path: str) -> str:
         finalize_task(
             "transform:end", obj=(df), debug_func=debug_memory_and_files_pandas
         )
-
-
-@task()
-def transform_add_sf_running_currentsapi_bronze_pipeline(csv_path: str) -> str:
-    df = None
-    debug_memory_and_files_pandas("add_sf:start")
-    try:
-        from src.function.index.sf_generator import SnowflakeGenerator
-        from airflow.hooks.base import BaseHook
-
-        conn = BaseHook.get_connection("postgres_localhost_5433")
-        dsn = f"dbname={conn.schema} user={conn.login} password={conn.password} host={conn.host} port={conn.port}"
-        sf = SnowflakeGenerator(dsn=dsn, source_name="bronze.currentsapi", version_no=1)
-
-        df = pd.read_csv(csv_path, sep=";", encoding="utf-8-sig")
-        if df.empty:
-            log.info("No rows found in bronze CSV %s", csv_path)
-            raise AirflowSkipException("No data to add sf_id for")
-
-        df["sf_id"] = sf.bulk_generate_fast(len(df))
-
-        out_csv_path = DataFormatter(
-            CsvToTempFormatter(prefix="currentsapi_bronze_sf_")
-        ).formatting(df)
-        log.info("Added sf_id to DF -> wrote %s (%d rows)", out_csv_path, len(df))
-        return out_csv_path
-
-    except AirflowSkipException:
-        raise
-    except Exception as e:
-        log.exception(f"Failed to transform add id_sf in currentsapi data: {e}")
-        raise AirflowException(
-            "Force transform_add_sf_running_currentsapi_bronze_pipeline task to fail"
-        )
-
-    finally:
-        finalize_task("add_sf:end", obj=(df), debug_func=debug_memory_and_files_pandas)
 
 
 @task()
@@ -331,20 +298,13 @@ with DAG(
     with TaskGroup("pipeline_bronze_currentsapi") as etl_bronze_group:
         data_extract = extract_get_currentsapi_bronze_pipeline()
         data_transform = transform_get_currentsapi_bronze_pipeline(data_extract)
-        data_add_sf = transform_add_sf_running_currentsapi_bronze_pipeline(
+        data_validate = validate_currentsapi_bronze_pipeline_with_ge_core(
             data_transform
         )
-        data_validate = validate_currentsapi_bronze_pipeline_with_ge_core(data_add_sf)
         data_bronze_load = load_get_currentsapi_pipeline(
             data_validate, "bronze", "source_news_articles_currentsapi", ["id", "url"]
         )
-        (
-            data_extract
-            >> data_transform
-            >> data_add_sf
-            >> data_validate
-            >> data_bronze_load
-        )
+        (data_extract >> data_transform >> data_validate >> data_bronze_load)
 
     with TaskGroup("pipeline_silver_clean_currentsapi") as tl_silver_group:
         data_silver_transform = transform_currentsapi_silver_pipeline(data_validate)
