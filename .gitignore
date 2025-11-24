@@ -8,6 +8,7 @@ Thumbs.db
 
 # Env files
 .env
+env/
 .venv/
 
 # Build output
@@ -38,7 +39,15 @@ grafana-data/
 *.grafana-data
 prometheus-data/
 *.prometheus-data
-.prometheus.yml/
+prometheus.yml/
 *.prometheus.yml
 
+htmlcov/
+*.htmlcov
 
+data/
+dvc_meta/
+.dvc/
+*.dvc
+
+*.note_dvc.txt
