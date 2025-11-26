@@ -41,12 +41,15 @@ x-airflow-common: &airflow-common
     MLFLOW_S3_ENDPOINT_URL: http://minio:9000
     AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
     AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+    DBT_PROFILES_DIR: /opt/airflow/config/dbt
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
     - ${AIRFLOW_PROJ_DIR:-.}/src:/opt/airflow/src
     - ${AIRFLOW_PROJ_DIR:-.}/requirements.txt:/opt/airflow/requirements.txt
+    - ${AIRFLOW_PROJ_DIR:-.}/config/dbt:/opt/airflow/config/dbt
+    - ${AIRFLOW_PROJ_DIR:-.}/dbt/ai_news_dbt:/opt/airflow/dbt
   user: "0:0"
   depends_on: &airflow-common-depends-on
     postgres-airflow:
@@ -310,6 +313,16 @@ services:
     volumes:
       - /var/log:/var/log
     command: -config.file=/etc/promtail/config.yml
+    networks:
+      - monitor-net
+  dbt:
+    image: ghcr.io/dbt-labs/dbt-postgres:1.9.0
+    working_dir: /usr/app/ai_news_dbt
+    volumes:
+      - ./config/dbt:/usr/app/config/dbt
+      - ./dbt/ai_news_dbt:/usr/app/ai_news_dbt
+    environment:
+      DBT_PROFILES_DIR: /usr/app/config/dbt
     networks:
       - monitor-net
 

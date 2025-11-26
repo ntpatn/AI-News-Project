@@ -6,9 +6,6 @@ from dataclasses import dataclass
 from typing import Optional
 
 
-# ==========================================================
-# CONFIG MODEL
-# ==========================================================
 @dataclass
 class SnowflakeConfig:
     version_no: int
@@ -31,9 +28,6 @@ class SnowflakeConfig:
         return (1 << self.datacenter_bits) - 1
 
 
-# ==========================================================
-# DATABASE HANDLER
-# ==========================================================
 class SnowflakeDatabase:
     def __init__(self, dsn: str):
         self.dsn = dsn
@@ -98,8 +92,6 @@ class SnowflakeDatabase:
     ):
         with psycopg2.connect(self.dsn) as conn, conn.cursor() as cur:
             conn.autocommit = True
-
-            # ✅ insert หรือ update ถ้ามี job เดิม
             cur.execute(
                 """
                 INSERT INTO system.t_running
@@ -121,8 +113,6 @@ class SnowflakeDatabase:
                     usercreate,
                 ),
             )
-
-            # ✅ อัปเดต timestamp ล่าสุดใน registry ด้วย
             cur.execute(
                 """
                 UPDATE system.source_registry
@@ -361,9 +351,6 @@ class SnowflakeGenerator:
     #     print(f"🎯 Done processing {self.source_name}")
 
 
-# ==========================================================
-# LOG HELPER
-# ==========================================================
 def log_running(
     dsn, source_name, version_no, job_name, id_start, id_end, usercreate="system"
 ):

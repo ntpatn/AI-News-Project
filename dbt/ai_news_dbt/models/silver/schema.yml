@@ -1,0 +1,50 @@
+version: 2
+
+models:
+  - name: silver_dbt_combined
+    description: "Unified news dataset"
+    columns:
+      - name: url
+        tests:
+          - not_null
+          - unique
+
+      - name: published_at
+        tests:
+          - not_null
+
+      - name: source_name
+        tests:
+          - not_null
+
+      - name: activedata
+        tests:
+          - accepted_values:
+              values: [true, false]
+
+  - name: silver_clean_currentsapi
+    columns:
+      - name: url
+        tests:
+          - unique
+          - not_null
+
+  - name: silver_clean_mediastack
+    columns:
+      - name: url
+        tests:
+          - unique
+          - not_null
+
+  - name: silver_clean_newsapi
+    columns:
+      - name: url
+        tests:
+          - unique
+          - not_null
+
+  - name: silver_stg_news_articles
+    columns:
+      - name: url
+        tests:
+          - not_null

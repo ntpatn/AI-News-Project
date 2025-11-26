@@ -1,0 +1,12 @@
+ai_news_dbt:
+  outputs:
+    dev:
+      dbname: postgres
+      host: host.docker.internal
+      pass: '!NTpatn2549'
+      port: 5433
+      schema: silver
+      threads: 4
+      type: postgres
+      user: postgres
+  target: dev

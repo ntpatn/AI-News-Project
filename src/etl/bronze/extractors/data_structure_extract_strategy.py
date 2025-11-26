@@ -1,5 +1,5 @@
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, MetaData, Table, select
 import os
 from pathlib import Path
 from io import BytesIO
@@ -18,6 +18,7 @@ class DbExtractor(BaseStructureExtractor):
             raise ValueError(
                 "Either 'table' or 'query' must be provided for DbExtractor."
             )
+
         self.conn_str = conn_str
         self.schema = schema
         self.table = table
@@ -37,18 +38,22 @@ class DbExtractor(BaseStructureExtractor):
             self.engine.dispose()
 
     def extractor(self) -> pd.DataFrame:
-        if self.conn is None:
-            self.engine = create_engine(self.conn_str)
-            with self.engine.connect() as conn:
-                if self.query:
-                    return pd.read_sql(self.query, conn)
-                else:
-                    return pd.read_sql_table(self.table, conn, schema=self.schema)
-        else:
-            if self.query:
-                return pd.read_sql(self.query, self.conn)
-            else:
-                return pd.read_sql_table(self.table, self.conn, schema=self.schema)
+        if self.query:
+            return pd.read_sql(self.query, self.conn or self.engine)
+        metadata = MetaData()
+        tbl = Table(
+            self.table,
+            metadata,
+            autoload_with=self.engine or self.conn,
+            schema=self.schema,
+        )
+        stmt = select(tbl)
+        with self.conn or self.engine.connect() as conn:
+            result = conn.execute(stmt)
+
+            rows = result.fetchall()
+            cols = result.keys()
+        return pd.DataFrame(rows, columns=cols)
 
 
 class CsvExtractor(BaseStructureExtractor):

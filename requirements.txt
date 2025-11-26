@@ -56,3 +56,4 @@ great_expectations
 dbt
 pytest 
 pytest-mock
+dbt-postgres

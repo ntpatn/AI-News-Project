@@ -78,7 +78,7 @@ def extract_get_currentsapi_bronze_pipeline():
 def transform_get_currentsapi_bronze_pipeline(json_path: str) -> str:
     from src.etl.bronze.transform.data_metadata_strategy import MetadataAppender
     from src.function.index.sf_generator import SnowflakeGenerator
-    from function.utils.connection.postgresql_dsn import build_postgresql_dsn
+    from src.function.utils.connection.postgresql_dsn import build_postgresql_dsn
 
     df = None
     try:
@@ -92,7 +92,7 @@ def transform_get_currentsapi_bronze_pipeline(json_path: str) -> str:
         df = DataFormatter(
             FromJsonToDataFrameFormatter(array_keys=["news"])
         ).formatting(data)
-
+        df = df[df["category"].notna()]
         metadata = {
             "createdate": pd.Timestamp.now(tz="UTC").to_pydatetime(),
             "usercreate": "system",

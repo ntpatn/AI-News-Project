@@ -31,11 +31,6 @@ class Artifact:
 
 
 class ArtifactStorageManager:
-    """
-    Manage publishing and fetching artifacts to local/minio storage.
-    Supports local passthrough for development & full MinIO backend for production.
-    """
-
     def __init__(
         self, artifact_prefix: Optional[str] = None, backend: Optional[str] = None
     ) -> None:
@@ -61,9 +56,6 @@ class ArtifactStorageManager:
         self._minio_bucket_checked = False
         # self._s3_client = None
 
-    # -----------------------------
-    # Retry helper
-    # -----------------------------
     def _with_retry(self, func, *args, retries=3, delay=1.5, **kwargs):
         """Generic retry wrapper for MinIO operations."""
         last_exc = None

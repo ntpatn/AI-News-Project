@@ -1,4 +1,3 @@
-# dq/expectations/bronze_currentsapi.py
 import great_expectations as gx
 
 
