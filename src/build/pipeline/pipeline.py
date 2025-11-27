@@ -35,10 +35,6 @@ def pipeline_from_steps_dict(step_dict: Dict[str, Any]) -> Pipeline:
     if not (hasattr(last_obj, "fit") and hasattr(last_obj, "predict")):
         raise ValueError(f"Last step '{last_name}' must be a model (has fit/predict).")
 
-    # for nm, obj in steps[:-1]:
-    #     if not (hasattr(obj, "fit") and hasattr(obj, "transform")):
-    #         raise ValueError(f"Step '{nm}' must be a transformer (has fit/transform).")
-
     return Pipeline(steps)
 
 

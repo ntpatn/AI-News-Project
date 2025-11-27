@@ -9,8 +9,6 @@ log = logging.getLogger(__name__)
 def get_alert_recipients() -> list:
     """Load recipients from Airflow Variables (dynamic, no rebuild)."""
     raw = Variable.get("alert_emails", default_var="")
-
-    # case 1 → JSON list
     if raw.strip().startswith("["):
         try:
             return json.loads(raw)
@@ -44,13 +42,17 @@ def build_dq_failure_body(context):
 
     if dq_results:
         html.append("<h3>DQ Summary</h3>")
-        html.append(f"Passed: {dq_results.get('passed')} / {dq_results.get('total')}<br>")
+        html.append(
+            f"Passed: {dq_results.get('passed')} / {dq_results.get('total')}<br>"
+        )
         html.append(f"Failed: {dq_results.get('failed')}<br>")
         html.append(f"Success Rate: {dq_results.get('success_rate')}%<br><br>")
 
         html.append("<h4>Failures:</h4>")
         for f in dq_results.get("failures", [])[:10]:
-            html.append(f"❌ [{f['index']}] {f['expectation']} ({f['column']}): {f.get('error') or f.get('result')}<br>")
+            html.append(
+                f"❌ [{f['index']}] {f['expectation']} ({f['column']}): {f.get('error') or f.get('result')}<br>"
+            )
     else:
         html.append("<i>No GE summary attached.</i>")
 

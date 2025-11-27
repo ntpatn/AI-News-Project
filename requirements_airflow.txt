@@ -11,3 +11,8 @@ tldextract==5.1.2
 great_expectations
 dbt
 dbt-postgres
+sentence-transformers
+torch
+transformers
+scikit-learn
+xgboost
