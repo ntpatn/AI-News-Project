@@ -5,7 +5,6 @@ from airflow.decorators import task
 import pandas as pd
 import re
 import os
-from sentence_transformers import SentenceTransformer
 import logging
 from src.function.utils.debug.debug_memory import debug_memory_and_files_pandas
 from src.function.utils.debug.debug_finally import finalize_task
@@ -58,13 +57,14 @@ def extract_gold_base(schema: str, table: str):
 
 @task
 def transform_gold_features(csv_path: str):
+    from sentence_transformers import SentenceTransformer
+
     df = None
     try:
         debug_memory_and_files_pandas("gold_transform:start")
 
         df = pd.read_csv(csv_path, sep=";", encoding="utf-8-sig")
 
-        # ---- CLEAN TEXT ----
         def clean_text(t):
             if pd.isna(t):
                 return ""
@@ -76,11 +76,42 @@ def transform_gold_features(csv_path: str):
 
         df["title_clean"] = df["title"].astype(str).apply(clean_text)
         df["description_clean"] = df["description"].astype(str).apply(clean_text)
-
         df["text_for_embed"] = df["title_clean"] + " " + df["description_clean"]
+        value_counts = df["category"].value_counts()
+        rare = value_counts[value_counts < 5].index
+        df["category"] = df["category"].replace(rare, "general")
 
-        # ---- EMBEDDING ----
-        model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+        # 2) normalize
+        df["category"] = df["category"].astype(str).str.lower().str.strip()
+
+        # 3) fix typos
+        df["category"] = df["category"].replace(
+            {"poiltics": "politics", "poltics": "politics", "politic": "politics"}
+        )
+
+        # 4) if multi-category, pick first
+        df["category"] = df["category"].str.split(",").str[0]
+
+        # 5) whitelist only 8 groups
+        VALID = [
+            "business",
+            "entertainment",
+            "general",
+            "health",
+            "science",
+            "sports",
+            "technology",
+            "politics",
+        ]
+
+        df["category"] = df["category"].apply(lambda x: x if x in VALID else "general")
+
+        # 6) encode → 0..7
+        encode_map = {cat: idx for idx, cat in enumerate(VALID)}
+        df["category_encode"] = df["category"].map(encode_map)
+        model = SentenceTransformer(
+            "sentence-transformers/all-MiniLM-L6-v2", device="cuda"
+        )
         emb = model.encode(
             df["text_for_embed"].tolist(), batch_size=32, show_progress_bar=False
         )
@@ -97,6 +128,7 @@ def transform_gold_features(csv_path: str):
                 "description_clean",
                 "published_at",
                 "embedding",
+                "category_encode",
             ]
         ]
 
@@ -121,7 +153,6 @@ def load_gold_features(csv_path: str, schema: str, table: str):
         PostgresUpsertLoader,
     )
 
-    df = pd.read_csv(csv_path, sep=";", encoding="utf-8-sig")
     loader = None
 
     try:

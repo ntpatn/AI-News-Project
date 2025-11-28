@@ -1,4 +1,4 @@
-from ml.registry import reducer
+from src.registry import reducer
 from sklearn.decomposition import TruncatedSVD, PCA
 
 

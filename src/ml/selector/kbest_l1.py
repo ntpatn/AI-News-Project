@@ -1,4 +1,4 @@
-from ml.registry import selector
+from src.registry import selector
 from sklearn.feature_selection import (
     SelectKBest,
     chi2,

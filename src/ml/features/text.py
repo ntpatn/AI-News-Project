@@ -1,12 +1,12 @@
-from ml.registry import feature as fe
+from src.registry import feature
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 
 
-@fe.register("tfidf", "tf-idf")
+@feature.register("tfidf")
 def make_tfidf(**kw):
     return TfidfVectorizer(**kw)
 
 
-@fe.register("count", "bow", "bag_of_words")
+@feature.register("count", "bow", "bag_of_words")
 def make_count(**kw):
     return CountVectorizer(**kw)

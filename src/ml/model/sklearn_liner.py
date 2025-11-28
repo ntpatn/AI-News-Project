@@ -1,4 +1,5 @@
-from ml.registry import model
+from src.registry import model
+
 
 @model.register("logreg", "logistic", meta={"family": "linear", "proba": True})
 def make_logreg(**kw):

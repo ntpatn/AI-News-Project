@@ -67,7 +67,6 @@ def extract_data():
 @task()
 def transform_data(csv_path: str) -> str:
     from src.function.index.sf_generator import SnowflakeGenerator
-    import uuid
 
     df = None
     debug_memory_and_files_pandas("transform:start")
@@ -85,7 +84,6 @@ def transform_data(csv_path: str) -> str:
         df = sf.assign_ids_from_dataframe(df, ts_col="createdate", sf_col="sf_id")
         if df["sf_id"].duplicated().any():
             raise AirflowException("Duplicate sf_id found after assignment.")
-        df["uuid_silver"] = uuid.uuid4()
         df["category"] = (
             df["category"]
             .str.replace("'", "", regex=False)

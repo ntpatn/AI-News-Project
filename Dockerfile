@@ -15,7 +15,8 @@ ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 USER airflow
-
+RUN pip install --no-cache-dir torch==2.4.0+cu121 torchvision==0.19.0+cu121 torchaudio==2.4.0+cu121 \
+    --index-url https://download.pytorch.org/whl/cu121
 # ติดตั้ง Python packages รวม dbt
 COPY requirements_airflow.txt /requirements_airflow.txt
 RUN pip install --no-cache-dir -r /requirements_airflow.txt \

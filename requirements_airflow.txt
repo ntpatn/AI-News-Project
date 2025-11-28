@@ -1,4 +1,4 @@
-mlflow<3
+mlflow>=3.1
 minio
 boto3
 pandas
@@ -16,3 +16,7 @@ torch
 transformers
 scikit-learn
 xgboost
+tf-keras
+faiss-cpu
+#Vizualization
+umap-learn

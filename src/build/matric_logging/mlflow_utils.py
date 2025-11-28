@@ -68,7 +68,11 @@ def log_dataframe_csv(df: pd.DataFrame, path: str):
     mlflow.log_text(df.to_csv(index=False), path)
 
 
-def log_model(model, artifact_path: str = "model"):
+def log_model(
+    model, artifact_path: str = "model", registered_model_name: Optional[str] = None
+):
     if not _HAS_MLFLOW:
         return
-    mlflow.sklearn.log_model(model, artifact_path=artifact_path)
+    mlflow.sklearn.log_model(
+        model, artifact_path=artifact_path, registered_model_name=registered_model_name
+    )

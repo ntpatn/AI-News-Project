@@ -51,3 +51,5 @@ dvc_meta/
 *.dvc
 
 *.note_dvc.txt
+notebook/
+*.notebook

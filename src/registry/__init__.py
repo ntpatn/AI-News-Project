@@ -35,11 +35,6 @@ class Registry:
         return sorted(self._makers.keys())
 
 
-extractor = Registry("extractor")
-transformer = Registry("transformer")
-loader = Registry("loader")
-
-
 def load_plugins(base_pkg, subfolder: str):
     import importlib
     import pkgutil
@@ -50,3 +45,13 @@ def load_plugins(base_pkg, subfolder: str):
     for _, name, _ in pkgutil.iter_modules(pkg.__path__):
         full_name = f"{pkg_name}.{name}"
         importlib.import_module(full_name)
+
+
+extractor = Registry("extractor")
+transformer = Registry("transformer")
+loader = Registry("loader")
+model = Registry("model")
+feature = Registry("feature")
+reducer = Registry("reducer")
+selector = Registry("selector")
+search = Registry("search")

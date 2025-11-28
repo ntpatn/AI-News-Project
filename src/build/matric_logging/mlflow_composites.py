@@ -3,7 +3,7 @@ from typing import Any, Dict, Iterable, Optional
 import numpy as np
 import pandas as pd
 
-from src.build.tracking.mlflow_primitives import (
+from src.build.matric_logging.mlflow_utils import (
     log_metrics,
     log_dict,
     log_dataframe_csv,
