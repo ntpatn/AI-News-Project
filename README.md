@@ -96,10 +96,10 @@ Ready for CLI, scripts, or future API deployment.
 
 ---
 
-## 📌 Flow Diagram
+<!-- ## 📌 Flow Diagram
 *(Placeholder — will be added once final flow is confirmed.)*
 
----
+--- -->
 
 ## 🌟 Why This Project Matters
 - Real enterprise‑grade architecture  
