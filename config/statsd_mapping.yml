@@ -1,6 +1,4 @@
 mappings:
-  # Airflow StatsD metrics mappings (https://airflow.apache.org/docs/apache-airflow/stable/logging-monitoring/metrics.html)
-  # === Counters ===
   - match: "*.ti_failures"
     match_metric_type: counter
     name: "af_agg_ti_failures"
