@@ -86,9 +86,6 @@ def train_pipeline(csv_path):
     from src.registry import load_plugins
     import json
 
-    # ======================================================
-    # CONFIG MLflow
-    # ======================================================
     set_tracking(uri=os.environ["MLFLOW_TRACKING_URI"], experiment="news-experiment")
     df = pd.read_csv(csv_path, sep=";", encoding="utf-8-sig")
     # 1) rare category → general
@@ -101,16 +98,10 @@ def train_pipeline(csv_path):
         X, y, test_size=0.4, random_state=42, stratify=y
     )
 
-    # ======================================================
-    # LOAD PLUGINS (สำคัญมาก — ต้องแก้เป็น path นี้)
-    # ======================================================
     load_plugins("src.ml", "features")
     load_plugins("src.ml", "model")
     load_plugins("src.ml", "search")
 
-    # ======================================================
-    # STEPS: EMBEDDING + XGBOOST
-    # ======================================================
     steps = {
         # "1_embed": feature.create(
         #     "embed",
@@ -123,18 +114,12 @@ def train_pipeline(csv_path):
 
     pipeline = pipeline_from_steps_dict(steps)
 
-    # ======================================================
-    # PARAM SEARCH SPACE (XGBOOST)
-    # ======================================================
     param_space = {
         "1_xgb__max_depth": [4, 6, 8],
         "1_xgb__learning_rate": [0.03, 0.05, 0.1],
         "1_xgb__n_estimators": [200, 300],
     }
 
-    # ======================================================
-    # RUN TRAINING (MLflow Pattern เดิม)
-    # ======================================================
     with start_run(run_name="embed_xgb_training"):
         search_est = run_search(
             kind="search",
@@ -166,9 +151,6 @@ def train_pipeline(csv_path):
         log_model(final_model, artifact_path="model")
 
 
-# ======================================================
-# AIRFLOW DAG
-# ======================================================
 with DAG(
     dag_id="news_ml_pipeline_embed_xgb",
     start_date=datetime(2024, 1, 1),

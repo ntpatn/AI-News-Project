@@ -50,14 +50,13 @@ s3fs
 
 tldextract==5.1.2
 mmh3
-apache-airflow[statsd]
 great_expectations
-
-dbt
 pytest 
 pytest-mock
-dbt-postgres
 tf-keras
 faiss-cpu
-#Vizualization
 umap-learn
+pyspark == 4.0.1
+psycopg2-binary
+dbt-core==1.10.15
+dbt-postgres==1.9.1

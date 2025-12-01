@@ -86,9 +86,6 @@ def train_pipeline(csv_path):
     from src.registry import load_plugins
     import json
 
-    # ======================================================
-    # CONFIG MLflow
-    # ======================================================
     set_tracking(uri=os.environ["MLFLOW_TRACKING_URI"], experiment="news-experiment")
     df = pd.read_csv(csv_path, sep=";", encoding="utf-8-sig")
     # 1) rare category → general
@@ -101,30 +98,20 @@ def train_pipeline(csv_path):
     X_train, X_val, y_train, y_val = train_test_split(
         X, y, test_size=0.4, random_state=42, stratify=y
     )
-
-    # ======================================================
-    # LOAD PLUGINS (สำคัญมาก — ต้องแก้เป็น path นี้)
-    # ======================================================
     load_plugins("src.ml", "features")
     load_plugins("src.ml", "model")
     load_plugins("src.ml", "search")
 
-    # ======================================================
-    # STEPS: EMBEDDING + XGBOOST
-    # ======================================================
     steps = {
         "1_xgb": model.create(
             "xgb",
-            device="cuda",  # ← บอกให้ใช้ GPU
-            tree_method="hist",  # ← เวอร์ชันใหม่ใช้ hist → auto detect device
+            device="cuda",
+            tree_method="hist",
         )
     }
 
     pipeline = pipeline_from_steps_dict(steps)
 
-    # ======================================================
-    # PARAM SEARCH SPACE (XGBOOST)
-    # ======================================================
     param_space = {
         "1_xgb__max_depth": [6],  # ลดเหลือ 1 ค่า
         "1_xgb__learning_rate": [0.05, 0.1],  # ลดเหลือ 2 ค่า
@@ -162,14 +149,13 @@ def train_pipeline(csv_path):
         log_classification_report(report, prefix="val_")
 
         # log model final state
-        log_model(final_model, artifact_path="model", registered_model_name="embed_xgb_model")
+        log_model(
+            final_model, artifact_path="model", registered_model_name="embed_xgb_model"
+        )
 
 
-# ======================================================
-# AIRFLOW DAG
-# ======================================================
 with DAG(
-    dag_id="news_ml_pipeline_embed_xgb22",
+    dag_id="news_ml_pipeline_embed_xgb_minimal",
     start_date=datetime(2024, 1, 1),
     schedule_interval=None,
     catchup=False,

@@ -1,6 +1,6 @@
 x-airflow-common: &airflow-common
   build: .
-  image: ${AIRFLOW_IMAGE_NAME:-apache/ai-news-airflow:2.10.3}
+  image: ${AIRFLOW_IMAGE_NAME_airflow2:-apache/ai-news-airflow:2.10.3}
   runtime: nvidia
   deploy:
     resources:
@@ -296,40 +296,40 @@ services:
       - 3000:3000
     networks:
       - monitor-net
-  # otel-collector:
-  #   image: otel/opentelemetry-collector-contrib:latest
-  #   command: ["--config=/etc/otel-collector-config.yaml"]
-  #   volumes:
-  #     - ./config/otel/otel-collector-config.yaml:/etc/otel-collector-config.yaml
-  #   networks:
-  #     - monitor-net
-  #     - default
-  # tempo:
-  #   image: grafana/tempo:latest
-  #   volumes:
-  #     - ./config/tempo/tempo.yaml:/etc/tempo.yaml
-  #   command: ["-config.file=/etc/tempo.yaml"]
-  #   ports:
-  #     - "3200:3200" # HTTP API
-  #     - "9096:9096" # gRPC server
-  #     - "4317:4317" # OTLP gRPC (รับ traces)
-  #     - "4318:4318"
-  #   networks:
-  #     - monitor-net
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./config/otel/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    networks:
+      - monitor-net
+      - default
+  tempo:
+    image: grafana/tempo:latest
+    volumes:
+      - ./config/tempo/tempo.yaml:/etc/tempo.yaml
+    command: ["-config.file=/etc/tempo.yaml"]
+    ports:
+      - "3200:3200" # HTTP API
+      - "9096:9096" # gRPC server
+      - "4317:4317" # OTLP gRPC (รับ traces)
+      - "4318:4318"
+    networks:
+      - monitor-net
 
-  # loki:
-  #   image: grafana/loki:2.9.0
-  #   ports:
-  #     - "3100:3100"
-  #   networks:
-  #     - monitor-net
-  # promtail:
-  #   image: grafana/promtail:2.9.0
-  #   volumes:
-  #     - /var/log:/var/log
-  #   command: -config.file=/etc/promtail/config.yml
-  #   networks:
-  #     - monitor-net
+  loki:
+    image: grafana/loki:2.9.0
+    ports:
+      - "3100:3100"
+    networks:
+      - monitor-net
+  promtail:
+    image: grafana/promtail:2.9.0
+    volumes:
+      - /var/log:/var/log
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - monitor-net
   dbt:
     image: ghcr.io/dbt-labs/dbt-postgres:1.9.0
     working_dir: /usr/app/ai_news_dbt
