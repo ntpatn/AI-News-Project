@@ -4,7 +4,7 @@ from sentence_transformers import SentenceTransformer
 import mlflow
 import mlflow.pyfunc
 
-
+mlflow.set_tracking_uri("http://localhost:5050")
 # ------------------------------------------------------------
 # Category encode/decode mapping
 # ------------------------------------------------------------
