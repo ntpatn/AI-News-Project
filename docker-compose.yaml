@@ -24,25 +24,27 @@ x-airflow-common: &airflow-common
     AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: "0"
     AIRFLOW__SCHEDULER__PARSING_PROCESSES: "2"
     AIRFLOW__SCHEDULER__USE_FILE_HASH: "True"
+
+    # StatsD Configuration - แก้ไข port ให้ถูกต้อง
     AIRFLOW__METRICS__STATSD_ON: "True"
     AIRFLOW__METRICS__STATSD_HOST: statsd-exporter
     AIRFLOW__METRICS__STATSD_PORT: "9125"
     AIRFLOW__METRICS__STATSD_PREFIX: airflow
+    # AIRFLOW__METRICS__STATSD_ALLOW_LIST: "*"
 
-    AIRFLOW__METRICS__STATSD_ALLOW_LIST: task_duration,task_fail,task_success
+    # # OpenTelemetry Configuration
+    # AIRFLOW__METRICS__OTEL_ON: "True"
+    # AIRFLOW__METRICS__OTEL_HOST: "otel-collector"
+    # AIRFLOW__METRICS__OTEL_GRPC_PORT: "4317"
 
-    AIRFLOW__METRICS__OTEL_ON: "True"
-    AIRFLOW__METRICS__OTEL_HOST: "otel-collector"
-    AIRFLOW__METRICS__OTEL_GRPC_PORT: "4317"
+    # AIRFLOW__LOGGING__OTEL_ON: "True"
+    # AIRFLOW__LOGGING__OTEL_HOST: "otel-collector"
+    # AIRFLOW__LOGGING__OTEL_GRPC_PORT: "4317"
 
-    AIRFLOW__LOGGING__OTEL_ON: "True"
-    AIRFLOW__LOGGING__OTEL_HOST: "otel-collector"
-    AIRFLOW__LOGGING__OTEL_GRPC_PORT: "4317"
-
-    AIRFLOW__OPENTELEMETRY__ENABLED: "True"
-    AIRFLOW__OPENTELEMETRY__EXPORTER: "otlp"
-    AIRFLOW__OPENTELEMETRY__OTLP_ENDPOINT: "http://otel-collector:4317"
-    AIRFLOW__OPENTELEMETRY__TRACES_SAMPLER: "always_on"
+    # AIRFLOW__OPENTELEMETRY__ENABLED: "True"
+    # AIRFLOW__OPENTELEMETRY__EXPORTER: "otlp"
+    # AIRFLOW__OPENTELEMETRY__OTLP_ENDPOINT: "http://otel-collector:4317"
+    # AIRFLOW__OPENTELEMETRY__TRACES_SAMPLER: "always_on"
 
     PYTHONPATH: /opt/airflow:/opt/airflow/src:/opt/airflow/dags
     MLFLOW_TRACKING_URI: http://mlflow:${MLFLOW_PORT}
@@ -60,6 +62,7 @@ x-airflow-common: &airflow-common
     - ${AIRFLOW_PROJ_DIR:-.}/requirements.txt:/opt/airflow/requirements.txt
     - ${AIRFLOW_PROJ_DIR:-.}/config/dbt:/opt/airflow/config/dbt
     - ${AIRFLOW_PROJ_DIR:-.}/dbt/ai_news_dbt:/opt/airflow/dbt
+    - ${AIRFLOW_PROJ_DIR:-.}/config/airflow.cfg:/opt/airflow/airflow.cfg
   user: "0:0"
   depends_on: &airflow-common-depends-on
     postgres-airflow:
@@ -80,6 +83,8 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    networks:
+      - default
 
   postgres-mlflow:
     image: postgres:15
@@ -95,6 +100,8 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    networks:
+      - default
 
   airflow-init:
     <<: *airflow-common
@@ -120,6 +127,8 @@ services:
       _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
       _PIP_ADDITIONAL_REQUIREMENTS: ""
     restart: "no"
+    networks:
+      - default
 
   airflow-webserver:
     <<: *airflow-common
@@ -198,6 +207,8 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    networks:
+      - default
 
   minio-setup:
     image: minio/mc:latest
@@ -212,6 +223,8 @@ services:
       echo 'MinIO bucket ready'
       "
     restart: "no"
+    networks:
+      - default
 
   mlflow:
     image: python:3.11-slim
@@ -253,22 +266,25 @@ services:
     ports:
       - "${MLFLOW_PORT:-5050}:${MLFLOW_PORT:-5050}"
     restart: unless-stopped
+    networks:
+      - default
 
   statsd-exporter:
     image: prom/statsd-exporter:latest
-    command:
-      - --statsd.mapping-config=/tmp/statsd_mapping.yml
-      - --statsd.listen-udp=:9125 # เพิ่ม: รับ StatsD จาก Airflow
-      - --web.listen-address=:9102 # เพิ่ม: metrics endpoint
-    ports:
-      - "9125:9125/udp" # เพิ่ม: expose UDP port
-      - "9102:9102" # เพิ่ม: expose metrics port
     volumes:
       - ./config/statsd_mapping.yml:/tmp/statsd_mapping.yml
+    command:
+      - --statsd.mapping-config=/tmp/statsd_mapping.yml
+      - --statsd.listen-udp=:9125
+      - --web.listen-address=:9102
+    ports:
+      - "9102:9102"
+      - "9125:9125"
     restart: always
     networks:
       - default
       - monitor-net
+
   prometheus:
     image: prom/prometheus:latest
     volumes:
@@ -277,15 +293,20 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
-      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-24h}
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    ports:
+      - "9092:9090"
     restart: always
     networks:
       - monitor-net
       - default
+
   node-exporter:
     image: prom/node-exporter:latest
     networks:
       - monitor-net
+
   grafana:
     image: grafana/grafana:latest
     volumes:
@@ -294,28 +315,38 @@ services:
       - prometheus
     ports:
       - 3000:3000
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=grafana
+      - GF_USERS_ALLOW_SIGN_UP=false
+    restart: always
     networks:
       - monitor-net
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
       - ./config/otel/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "8889:8889"
     networks:
       - monitor-net
       - default
+
   tempo:
     image: grafana/tempo:latest
     volumes:
       - ./config/tempo/tempo.yaml:/etc/tempo.yaml
     command: ["-config.file=/etc/tempo.yaml"]
     ports:
-      - "3200:3200" # HTTP API
-      - "9096:9096" # gRPC server
-      - "4317:4317" # OTLP gRPC (รับ traces)
+      - "3200:3200"
+      - "9096:9096"
+      - "4317:4317"
       - "4318:4318"
     networks:
       - monitor-net
+      - default
 
   loki:
     image: grafana/loki:2.9.0
@@ -323,6 +354,7 @@ services:
       - "3100:3100"
     networks:
       - monitor-net
+
   promtail:
     image: grafana/promtail:2.9.0
     volumes:
@@ -330,6 +362,7 @@ services:
     command: -config.file=/etc/promtail/config.yml
     networks:
       - monitor-net
+
   dbt:
     image: ghcr.io/dbt-labs/dbt-postgres:1.9.0
     working_dir: /usr/app/ai_news_dbt
@@ -344,6 +377,9 @@ services:
 networks:
   monitor-net:
     driver: bridge
+  default:
+    driver: bridge
+
 volumes:
   pg_airflow:
   pg_mlflow:

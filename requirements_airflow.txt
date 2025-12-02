@@ -20,3 +20,5 @@ tf-keras
 faiss-cpu
 #Vizualization
 umap-learn
+# apache-airflow[statsd]
+statsd
